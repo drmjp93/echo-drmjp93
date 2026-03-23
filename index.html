@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>2D Echo Reporting</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22black%22/><text y=%22.9em%22 font-size=%2290%22 fill=%22white%22 font-family=%22Arial, sans-serif%22 font-weight=%22bold%22 x=%2250%%22 text-anchor=%22middle%22>E</text></svg>">
+  <style>
+    :root { --bg: #f8fafc; --border: #cbd5e1; --accent: #ea580c; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); padding: 15px; }
+
+    /* =========================================
+       LOCK SCREEN STYLES
+       ========================================= */
+    #auth-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; display: flex; justify-content: center; align-items: center; background: #0f172a; color: #fff; z-index: 9999; overflow: hidden; }
+    .datetime { position: absolute; top: 30px; right: 40px; text-align: right; font-size: .85rem; opacity: .7; line-height: 1.4; z-index: 5; }
+    #auth-screen::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px); background-size: 50px 50px; animation: drift 60s linear infinite; z-index: 0; }
+    @keyframes drift { from {background-position:0 0,0 0} to {background-position:50px 50px,50px 50px} }
+    .blob { position: absolute; border-radius: 50%; filter: blur(120px); opacity: .08; will-change: transform; z-index: 1; }
+    .blob1 { width: 600px; height: 600px; background: #ea580c; top: -200px; left: -200px; animation: float1 40s linear infinite alternate; }
+    .blob2 { width: 500px; height: 500px; background: #3b82f6; bottom: -200px; right: -150px; animation: float2 55s linear infinite alternate; }
+    .blob3 { width: 400px; height: 400px; background: #22c55e; top: 30%; left: 60%; animation: float3 70s linear infinite alternate; }
+    @keyframes float1 { from {transform:translate3d(0,0,0)} to {transform:translate3d(120px,80px,0)} }
+    @keyframes float2 { from {transform:translate3d(0,0,0)} to {transform:translate3d(-140px,-100px,0)} }
+    @keyframes float3 { from {transform:translate3d(0,0,0)} to {transform:translate3d(-100px,120px,0)} }
+    .ecg { position: absolute; bottom: 25%; width: 100%; height: 140px; opacity: .05; z-index: 2; }
+    .ecg path { stroke: var(--accent); stroke-width: 2; fill: none; stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: ecgMove 6s linear infinite; }
+    @keyframes ecgMove { to {stroke-dashoffset:0} }
+    .auth-wrapper { text-align: center; width: 420px; z-index: 10; position: relative; }
+    .page-title { font-size: 2.2rem; font-weight: 500; margin-bottom: 50px; letter-spacing: .5px; }
+    .dev-label { font-size: .75rem; opacity: .6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .dr-name { font-size: 1.3rem; font-weight: 500; }
+    .separator { width: 60px; height: 1px; background: rgba(255,255,255,.3); margin: 12px auto; }
+    .credentials { font-size: .75rem; opacity: .7; line-height: 1.5; }
+    #hidden-pin { position: absolute; opacity: 0; pointer-events: none; }
+    .auth-message { margin-top: 40px; height: 24px; font-size: .85rem; opacity: .8; font-weight: 700; letter-spacing: 0.5px;}
+    .auth-success { color: #22c55e; }
+    .auth-fail { color: #ef4444; }
+    @keyframes shake { 0% {transform:translateX(0)} 25% {transform:translateX(-6px)} 50% {transform:translateX(6px)} 75% {transform:translateX(-6px)} 100% {transform:translateX(0)} }
+    .shake { animation: shake .35s ease; }
+    
+    /* INACTIVITY WARNING BANNER */
+    #inactivity-warning { display: none; position: fixed; top: 0; left: 0; width: 100%; background: #ef4444; color: white; text-align: center; padding: 12px; z-index: 100000; font-weight: 700; font-size: 0.95rem; box-shadow: 0 4px 10px rgba(0,0,0,0.2); letter-spacing: 0.5px; }
+
+
+#rvsp-warning {
+  display: none;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  padding: 10px 15px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-top: 8px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+
+
+
+
+    /* =========================================
+       APP STYLES
+       ========================================= */
+    #app-screen { display: none; max-width: 1400px; margin: 0 auto; padding-bottom: 40px; }
+    .app-layout { display: flex; gap: 20px; align-items: stretch; }
+    .form-section { flex: 1; min-width: 0; }
+    .conclusion-section { width: 400px; top: 15px; display: flex; flex-direction: column; }
+    .panel { background: #fff; padding: 12px 15px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 12px; }
+    .panel h3 { color: var(--accent); font-size: .9rem; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+    .flex-row { display: flex; flex-wrap: wrap; gap: 12px 15px; }
+    .v-divider { width: 1px; background: var(--border); margin: 0 5px; min-height: 40px; }
+    .valve-box { border: 1px solid #e2e8f0; padding: 10px 15px; border-radius: 6px; margin-bottom: 12px; background: #f8fafc; }
+    .valve-title { font-size: .75rem; font-weight: 700; color: var(--accent); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+    .ig { display: flex; flex-direction: column; gap: 2px; width: 75px; }
+    .ig-med { width: 100px; }
+    .ig-wide { width: 180px; }
+    .ig label { font-size: .7rem; font-weight: 700; color: #64748b; white-space: nowrap; }
+    .ig input, .ig select { padding: 4px; border: 1px solid var(--border); border-radius: 4px; font-size: .85rem; text-align: center; width: 100%; transition: .2s; }
+    .ig input[type="text"]:not(.auto-calc) { text-align: left; }
+   
+    .ui-table-container { background: var(--border); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 15px; }
+    .ui-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; }
+    .ui-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; }
+    
+    .ui-cell { display: flex; background: #fff; }
+    .ui-cell label { background: #f1f5f9; padding: 6px 10px; margin: 0; font-size: 0.75rem; font-weight: 700; color: #475569; border-right: 1px solid var(--border); display: flex; align-items: center; width: 105px; flex-shrink: 0; }
+    .ui-cell input, .ui-cell select { border: none; padding: 8px; font-size: 0.85rem; width: 100%; border-radius: 0; outline: none; text-align: center; font-weight: 600; color: #1e293b; }
+    .ui-cell input:focus, .ui-cell select:focus { background: #e0f2fe; }
+    .ui-cell input.auto-calc { background: #f8fafc; color: var(--accent); }
+    .auto-calc { background: #f1f5f9; font-weight: 700; color: var(--accent); }
+    
+    button { background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: .85rem; }
+    .btn-small { padding: 4px 8px; font-size: .75rem; border-radius: 4px; }
+    .btn-red { background: #ef4444; }
+    .btn-clear { background: #ef4444; margin-right: 5px; }
+    .btn-ref { background: #3b82f6; margin-right: 5px; }
+    .btn-map { background: #8b5cf6; margin-right: 5px; }
+    .btn-print { background: #10b981; }
+    
+    .pill { background: #f1f5f9; color: #475569; border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px; font-size: .8rem; font-weight: 600; cursor: pointer; transition: .2s; margin-bottom: 4px; }
+    .pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .smart-editor { flex: 1; width: 100%; min-height: 250px; padding: 15px; border: 1px solid var(--border); border-radius: 4px; font-size: 14.5px; line-height: 1.6; background: #fff; outline: 0; overflow-y: auto; }
+    .smart-editor:focus { border-color: var(--accent); }
+    
+    .ref-panel { display: none; background: #e0f2fe; border-color: #7dd3fc; }
+    .ref-table { width: 100%; border-collapse: collapse; font-size: .8rem; margin-bottom: 10px; background: #fff; }
+    .ref-table td, .ref-table th { border: 1px solid #bae6fd; padding: 6px; text-align: center; }
+    .ref-table th { background: #0284c7; color: #fff; }
+    
+    .rwma-container { display: flex; gap: 20px; align-items: center; justify-content: center; padding: 10px 0; }
+    .rwma-path:hover { opacity: .8; }
+    .rwma-legend { display: flex; gap: 15px; font-size: .75rem; font-weight: 700; color: #475569; justify-content: center; margin-top: 10px; }
+    .leg-box { width: 12px; height: 12px; border: 1px solid #cbd5e1; border-radius: 2px; display: inline-block; vertical-align: middle; margin-right: 4px; }
+    .loading-pulse { animation: pulse 1s infinite alternate; }
+    @keyframes pulse { from {opacity: 1} to {opacity: .4} }
+
+    .is-calculated { background-color: #4cb8dab0 !important; border: 1px solid #4cb8dab0 !important; color: #01002b !important; font-weight: bold; cursor: not-allowed; }
+
+    #print-layout-1page, #print-layout-2page { display: none; }
+
+    /* PIN dots - always visible */
+    .pin-dots { display: flex; gap: 12px; justify-content: center; margin: 18px 0 5px; }
+    .pin-dot { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4); background: transparent; transition: background .2s, border-color .2s; }
+    .pin-dot.filled { background: #fff; border-color: #fff; }
+
+    /* Mobile tap hint - hidden on desktop, shown on touch */
+    .mobile-tap-hint { display: none; margin-top: 22px; font-size: .75rem; opacity: .45; letter-spacing: 1.5px; text-transform: uppercase; animation: blink 2s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:.25} 50%{opacity:.65} }
+    @media (hover: none) and (pointer: coarse) { .mobile-tap-hint { display: block; } }
+
+    /* =========================================
+       MOBILE RESPONSIVE STYLES
+       ========================================= */
+    @media (max-width: 768px) {
+      body { padding: 8px; }
+
+      /* --- Lock Screen Mobile --- */
+      .auth-wrapper { width: 90vw; max-width: 360px; }
+      .page-title { font-size: 1.5rem; margin-bottom: 30px; }
+      .datetime { top: 15px; right: 15px; font-size: .75rem; }
+      #hidden-pin { width: 1px; height: 1px; }
+      #mobile-unlock-btn { display: block !important; }
+      /* hide pin dots on lock screen — PIN is entered via native keyboard */
+      .pin-dots { display: flex; gap: 12px; justify-content: center; margin: 20px 0 5px; }
+      .pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.4); background: transparent; transition: background .2s; }
+      .pin-dot.filled { background: #fff; border-color: #fff; }
+
+      /* --- App Header --- */
+      #app-screen > div:first-child { flex-direction: column; align-items: flex-start; gap: 10px; }
+      #app-screen > div:first-child h2 { font-size: .85rem; line-height: 1.3; }
+      #app-screen > div:first-child > div { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+      #app-screen > div:first-child > div button { flex: 1 1 auto; font-size: .75rem; padding: 8px 6px; min-width: 70px; }
+      #rvsp-warning { font-size: .75rem; }
+
+      /* --- Layout: stack form + conclusion vertically --- */
+      .app-layout { flex-direction: column; gap: 12px; }
+      .conclusion-section { width: 100% !important; }
+
+      /* --- Panels --- */
+      .panel { padding: 10px 10px; }
+      .panel h3 { font-size: .82rem; }
+
+      /* --- Patient info row --- */
+      .panel .flex-row { gap: 8px 10px; }
+      .ig { width: calc(50% - 6px) !important; }
+      .ig-wide { width: 100% !important; }
+      .ig-med { width: calc(50% - 6px) !important; }
+      .ig input, .ig select { font-size: .9rem; padding: 6px 4px; }
+
+      /* --- Quick Notes pills --- */
+      .panel .flex-row .pill { font-size: .72rem; padding: 5px 9px; }
+
+      /* --- ui-table grids: force 2-col on mobile, 1-col for very narrow --- */
+      .ui-grid-3 { grid-template-columns: 1fr 1fr; }
+      .ui-grid-4 { grid-template-columns: 1fr 1fr; }
+      .ui-cell label { width: 85px; font-size: .68rem; padding: 5px 6px; }
+      .ui-cell input, .ui-cell select { font-size: .82rem; padding: 6px 4px; }
+
+      /* --- RWMA mapper: scale down SVGs --- */
+      .rwma-container { flex-direction: column; align-items: center; gap: 12px; }
+      #svg-psax { width: 170px !important; height: 170px !important; }
+      #svg-a4ch, #svg-a2ch { width: 110px !important; height: 170px !important; }
+      .rwma-legend { flex-wrap: wrap; gap: 8px; font-size: .7rem; }
+
+      /* --- Ref & Map panels --- */
+      .ref-table { font-size: .7rem; }
+      .ref-table td, .ref-table th { padding: 4px 5px; }
+
+      /* --- Conclusion panel --- */
+      .smart-editor { min-height: 180px; font-size: 13.5px; }
+
+      /* --- Inactivity warning --- */
+      #inactivity-warning { font-size: .8rem; padding: 9px; }
+
+      /* --- Buttons general --- */
+      .btn-small { font-size: .7rem; padding: 5px 8px; }
+    }
+
+    @media (max-width: 400px) {
+      .ui-grid-3, .ui-grid-4 { grid-template-columns: 1fr; }
+      .ui-cell label { width: 110px; }
+    }
+  </style>
+
+  <style id="print-styles" media="print">
+    @page { size: A4; margin: 12mm; }
+    body { background: #fff !important; padding: 0 !important; color: #000; font-family: "Times New Roman", Times, serif; font-size: 11pt; }
+    #app-screen, #auth-screen, #inactivity-warning { display: none !important; }
+    .print-active { display: block !important; width: 100%; margin: 0 auto; line-height: 1.3; }
+    .letterhead-spacer { display: block; width: 100%; height: 1.8cm; }
+    .print-title { text-align: center; font-size: 13pt; font-weight: 700; text-decoration: underline; margin-bottom: 15px; }
+    .pt-val { font-weight: 400; margin-left: 5px; }
+    .disclaimer { border-top: 1px solid #000; color: #444; text-align: justify; page-break-inside: avoid; }
+    
+    #print-layout-1page .pt-info-container { display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid #000; padding-bottom: 8px; margin-bottom: 10px; font-weight: 700; font-size: 10.5pt; }
+    #print-layout-1page .pt-info-row { display: flex; justify-content: space-between; align-items: center; }
+    #print-layout-1page .dyn-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 8px; }
+    #print-layout-1page .dyn-table td { padding: 2px 4px; vertical-align: middle; border: 1px solid #000; font-size: 9.5pt; line-height: 1.1; }
+    #print-layout-1page .dyn-table td.lbl { font-weight: 400; color: #222; width: 12%; padding-right: 2px; }
+    #print-layout-1page .dyn-table td.val { font-weight: 700; white-space: nowrap; width: 8%; text-align: center; }
+    #print-layout-1page .section-title { font-weight: 700; text-decoration: underline; margin: 8px 0 4px 0; font-size: 10.5pt; }
+    #print-layout-1page .conclusion-text { margin-top: 4px; line-height: 1.35; font-size: 10.5pt; }
+    #print-layout-1page .print-footer { margin-top: 15px; text-align: left; font-weight: 700; line-height: 1.2; font-size: 10pt; }
+    #print-layout-1page .disclaimer { margin-top: 15px; padding-top: 6px; font-size: 8pt; line-height: 1.2; }
+    
+    #print-layout-2page .page-1-wrapper { display: block; }
+    #print-layout-2page .pt-info-container { display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid #000; padding-bottom: 10px; margin-bottom: 20px; font-weight: 700; font-size: 11pt; }
+    #print-layout-2page .pt-info-row { display: flex; justify-content: space-between; align-items: center; }
+    #print-layout-2page .section-title { font-weight: 700; text-decoration: underline; margin: 15px 0 10px 0; font-size: 12.5pt; }
+    #print-layout-2page .conclusion-text { margin-top: 5px; line-height: 1.7; font-size: 12pt; text-align: justify; }
+    #print-layout-2page .footer-wrapper { margin-top: 30px; page-break-inside: avoid; }
+    #print-layout-2page .print-footer { text-align: left; font-weight: 700; line-height: 1.4; font-size: 11.5pt; padding-bottom: 15px; }
+    #print-layout-2page .disclaimer { padding-top: 10px; font-size: 8.5pt; line-height: 1.3; }
+    #print-layout-2page .dyn-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 15px; }
+    #print-layout-2page .dyn-table td { padding: 4px 6px; vertical-align: middle; border: 1px solid #000; font-size: 10.5pt; }
+    #print-layout-2page .dyn-table td.lbl { font-weight: 400; color: #222; width: 12%; padding-right: 2px; }
+    #print-layout-2page .dyn-table td.val { font-weight: 700; white-space: nowrap; width: 8%; text-align: center; }      
+    #print-layout-2page .rwma-container { gap: 15px; padding: 0; margin-bottom: 10px; display: flex; justify-content: center; }
+    #print-layout-2page .rwma-container svg { height: 160px; width: auto; }
+    #print-layout-2page .rwma-container > div > div { font-size: 10pt !important; margin-bottom: 4px !important; }
+    #print-layout-2page .rwma-legend { font-size: 9pt; margin-top: 5px; margin-bottom: 15px; display: flex; justify-content: center; gap: 15px; }
+    .page-break { page-break-before: always; break-before: page; }
+  </style>
+</head>
+<body>
+
+<div id="inactivity-warning">
+    ⚠️ SECURITY ALERT: Echo Console auto-locking in <span id="lock-timer">15</span> seconds due to inactivity. Move mouse or press any key to resume.
+</div>
+
+<div id="auth-screen">
+  <div class="blob blob1"></div>
+  <div class="blob blob2"></div>
+  <div class="blob blob3"></div>
+  <div class="datetime">
+    <div id="current-date"></div>
+    <div id="current-time"></div>
+  </div>
+  <svg class="ecg" viewBox="0 0 1000 200" preserveAspectRatio="none">
+    <path d="M0 100 L150 100 L200 40 L250 160 L300 100 L1000 100"/>
+  </svg>
+  <div class="auth-wrapper">
+    <div class="page-title">2D ECHO Reporting</div>
+    <div class="dev-label">Developed by</div>
+    <div class="dr-name">Dr. Mit Panchani</div>
+    <div class="separator"></div>
+    <div class="credentials">MD (General Medicine)<br>Fellow in 2D Echocardiography</div>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot" id="dot0"></div>
+      <div class="pin-dot" id="dot1"></div>
+      <div class="pin-dot" id="dot2"></div>
+      <div class="pin-dot" id="dot3"></div>
+    </div>
+    <div id="auth-message" class="auth-message"></div>
+    <div class="mobile-tap-hint">Tap anywhere to enter PIN</div>
+  </div>
+  <input type="password" id="hidden-pin" maxlength="4" autofocus inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+  <button id="mobile-unlock-btn" onclick="document.getElementById('hidden-pin').focus()" style="display:none; position:absolute; bottom:60px; left:50%; transform:translateX(-50%); background:rgba(255,255,255,0.12); color:#fff; border:1px solid rgba(255,255,255,0.3); padding:14px 36px; border-radius:30px; font-size:1rem; letter-spacing:1px; backdrop-filter:blur(8px); z-index:20; cursor:pointer;">🔐 Tap to Enter PIN</button>
+</div>
+
+<div id="app-screen">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px">
+    <h2>2D ECHO REPORTING - Developed by Dr. Mit Panchani </h2>
+    <div>
+      <button class="btn-map" onclick="toggleMap()">🗺️ Artery Map</button> 
+      <button class="btn-ref" onclick="toggleRef()">📖 ASE Guidelines</button> 
+      <button class="btn-clear" onclick="clearForm()">🗑️ Clear</button> 
+     <button id="pdf-dl-btn" class="btn-print" onclick="checkRVSP('pdf')" style="background: #2563eb;">📥 Download PDF</button>
+     <button class="btn-print" onclick="checkRVSP('print')">🖨️ Print</button>
+    <div id="rvsp-warning">⚠️ RVSP is mandatory. Please enter a value (or 0 if not measurable) before generating the report.</div>
+    </div>
+  </div>
+
+  <div id="map-panel" class="panel ref-panel" style="background:#f0fdf4; border-color:#86efac">
+    <h3>Coronary Artery Territories Reference (17-Segment)</h3>
+    <div style="padding:10px 0">
+      <table class="ref-table" style="width:100%; background:#fff; margin:0">
+        <tr>
+          <th style="background:#ef4444; width:33%;">LAD Territory</th>
+          <th style="background:#3b82f6; width:33%;">RCA Territory</th>
+          <th style="background:#eab308; width:33%;">LCx Territory</th>
+        </tr>
+        <tr>
+          <td style="text-align:left; padding: 8px 15px; vertical-align:top; line-height: 1.6;">
+            • Anterior<br>• Anteroseptal<br>• Apical anterior<br>• Apical septal<br>• Apical cap <i>(Primary)</i>
+          </td>
+          <td style="text-align:left; padding: 8px 15px; vertical-align:top; line-height: 1.6;">
+            • Inferior<br>• Inferoseptal<br>• Apical inferior
+          </td>
+          <td style="text-align:left; padding: 8px 15px; vertical-align:top; line-height: 1.6;">
+            • Anterolateral<br>• Inferolateral<br>• Apical lateral
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div id="ref-panel" class="panel ref-panel">
+    <h3>ASE / EACVI Reference Guidelines (Gender-Indexed)</h3>
+    <table class="ref-table">
+      <tr><th>PARAMETER</th><th>NORMAL (FEMALE)</th><th>NORMAL (MALE)</th><th>MILD</th><th>MODERATE</th><th>SEVERE</th></tr>
+      <tr><td><b>LVDd (mm)</b></td><td>38 - 52</td><td>42 - 58</td><td>F: 53-56 | M: 59-63</td><td>F: 57-61 | M: 64-68</td><td>F: ≥62 | M: ≥69</td></tr>
+      <tr><td><b>LVPWd (mm)</b></td><td>6 - 9</td><td>6 - 10</td><td>F: 10-12 | M: 11-13</td><td>F: 13-15 | M: 14-16</td><td>F: ≥16 | M: ≥17</td></tr>
+      <tr><td><b>AS (Vmax m/s)</b></td><td colspan="2">< 2.6 <i>(Sclerosis)</i></td><td>2.6 - 2.9</td><td>3.0 - 4.0</td><td>≥ 4.0</td></tr>
+      <tr><td><b>MS (Mean PG)</b></td><td colspan="2">-</td><td>< 5</td><td>5 - 10</td><td>> 10</td></tr>
+      <tr><td><b>RVSP (mmHg)</b></td><td colspan="2">Normal ≤ 35 mmHg</td><td>36 - 45</td><td>46 - 60</td><td>> 60</td></tr>
+    </table>
+    <div style="font-size:.8rem; font-weight:700; color:#0369a1; margin-top: 6px;">RWT = 2(LVPWd/LVDd). If > 0.42 = Concentric Geometry. TAPSE < 16 mm = Reduced RV Function.</div>
+  </div>
+
+  <div class="app-layout">
+    <div class="form-section">
+      <div class="panel flex-row">
+        <div class="ig ig-wide"><label>NAME</label><input type="text" id="pt-name" class="live-input" oninput="this.value = this.value.toUpperCase()"></div>
+        <div class="ig"><label>AGE</label><input type="text" id="pt-age" class="live-input"></div>
+        <div class="ig"><label>GENDER</label><input type="text" id="pt-gender" class="live-input" oninput="this.value = this.value.toUpperCase()"></div>
+        <div class="ig ig-wide"><label>REFERRED BY</label><input type="text" id="pt-ref" class="live-input" oninput="this.value = this.value.toUpperCase()"></div>
+        <div class="ig ig-med"><label>DATE</label><input type="date" id="pt-date" class="live-input"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Quick Notes</h3>
+        <div class="flex-row" style="align-items:center">
+          <button class="pill" id="p-tach" onclick="togglePill(this)" data-txt="Tachycardia noted during study" style="display: none;">Tachycardia</button> 
+          <button class="pill" id="p-brad" onclick="togglePill(this)" data-txt="Bradycardia noted during study" style="display: none;">Bradycardia</button> 
+          <button class="pill" id="p-arrh" onclick="togglePill(this)" data-txt="Arrhythmia noted during study">Arrhythmia</button> 
+          <button class="pill" id="p-poor" onclick="togglePill(this)" data-txt="Poor echo window">Poor Window</button> 
+          <button class="pill" id="p-lim" onclick="togglePill(this)" data-txt="Limited scan">Limited Scan</button> 
+          <button class="pill" id="p-cabg" onclick="togglePill(this)" data-txt="S/P CABG">S/P CABG</button> 
+          <button class="pill" id="p-ptca" onclick="togglePill(this)" data-txt="S/P PTCA">S/P PTCA</button> 
+          <button class="pill" id="p-avr" onclick="togglePill(this)" data-txt="S/P AVR">S/P AVR</button> 
+          <button class="pill" id="p-mvr" onclick="togglePill(this)" data-txt="S/P MVR">S/P MVR</button> 
+          <button class="pill" id="p-bmv" onclick="togglePill(this)" data-txt="S/P BMV">S/P BMV</button>
+        
+          <div style="width:1px; height:20px; background:var(--border); margin:0 5px"></div> 
+          
+          <button class="pill" id="p-lvdd" onclick="togglePill(this)" data-txt="Reduced LV Compliance">LVDD</button>
+          <button class="pill" id="p-lvdd1" onclick="togglePill(this)" data-txt="Reduced LV Compliance with Grade 1 LVDD">LVDD-1</button>
+          <button class="pill" id="p-lvdd3" onclick="togglePill(this)" data-txt="Reduced LV Compliance with Grade 3 LVDD">LVDD-3</button>
+
+          <div style="width:1px; height:20px; background:var(--border); margin:0 5px"></div> 
+
+          <button class="pill" id="p-avs" onclick="togglePill(this)">AV Sclerosis</button> 
+          <button class="pill" id="p-mac" onclick="togglePill(this)">MAC +</button>
+         
+          <div style="width:1px; height:20px; background:var(--border); margin:0 5px"></div> 
+          <button class="pill" id="p-pe" onclick="togglePill(this)">Pericardial Effusion</button>
+        </div>
+      </div>
+
+     <div class="panel">
+        <h3>Dimensions</h3>
+        <div class="ui-table-container">
+          <div class="ui-grid-3" style="border-bottom: 1px solid var(--border);">
+            <div class="ui-cell"><label>IVSd (mm)</label><input type="number" step="0.1" id="ivsd" class="print-dim live-input arrow-nav-dim3" data-lbl="IVSd (mm)"></div>
+            <div class="ui-cell"><label>IVSs (mm)</label><input type="number" step="0.1" id="ivss" class="print-dim live-input arrow-nav-dim3" data-lbl="IVSs (mm)"></div>
+            <div class="ui-cell"><label>Ao (mm)</label><input type="number" step="0.1" id="ao" class="print-dim live-input arrow-nav-dim3" data-lbl="Ao (mm)"></div>
+
+            <div class="ui-cell"><label>LVDd (mm)</label><input type="number" step="0.1" id="lvdd" class="print-dim live-input arrow-nav-dim3" data-lbl="LVDd (mm)"></div>
+            <div class="ui-cell"><label>LVDs (mm)</label><input type="number" step="0.1" id="lvds" class="print-dim live-input arrow-nav-dim3" data-lbl="LVDs (mm)"></div>
+            <div class="ui-cell"><label>LA (mm)</label><input type="number" step="0.1" id="la" class="print-dim live-input arrow-nav-dim3" data-lbl="LA (mm)"></div>
+
+            <div class="ui-cell"><label>LVPWd (mm)</label><input type="number" step="0.1" id="lvpwd" class="print-dim live-input arrow-nav-dim3" data-lbl="LVPWd (mm)"></div>
+            <div class="ui-cell"><label>LVPWs (mm)</label><input type="number" step="0.1" id="lvpws" class="print-dim live-input arrow-nav-dim3" data-lbl="LVPWs (mm)"></div>
+            <div class="ui-cell"><label>LA/Ao</label><input type="text" id="laao" class="print-dim auto-calc arrow-nav-dim3 is-calculated" data-lbl="LA/Ao" readonly></div>
+
+            <div class="ui-cell"><label>LVEF (%)</label><input type="number" id="ef" class="print-dim live-input arrow-nav-dim3" data-lbl="LVEF (%)"></div>
+            <div class="ui-cell"><label>RA (mm)</label><input type="number" id="ra" class="print-dim live-input arrow-nav-dim3" data-lbl="RA Size (mm)"></div>
+            <div class="ui-cell"><label>RV (mm)</label><input type="number" id="rv" class="print-dim live-input arrow-nav-dim3" data-lbl="RV Size (mm)"></div>
+          </div>
+          
+          <div class="ui-grid-4">
+            <div class="ui-cell"><label>EPSS (mm)</label><input type="number" id="epss" class="print-dim live-input arrow-nav-dim4" data-lbl="EPSS (mm)"></div>
+            <div class="ui-cell"><label>MPA (mm)</label><input type="number" id="mpa" class="print-dim live-input arrow-nav-dim4" data-lbl="MPA (mm)"></div>
+            <div class="ui-cell"><label>RPA (mm)</label><input type="number" id="rpa" class="print-dim live-input arrow-nav-dim4" data-lbl="RPA (mm)"></div>
+            <div class="ui-cell"><label>LPA (mm)</label><input type="number" id="lpa" class="print-dim live-input arrow-nav-dim4" data-lbl="LPA (mm)"></div>
+          </div>
+        </div>
+      </div>
+
+     <div class="panel">
+        <h3>Doppler & Valves</h3>
+        <div class="ui-table-container">
+          <div class="ui-grid-4">
+            <div class="ui-cell"><label>MV E (m/s)</label><input type="number" step="0.01" id="mv-e" class="print-dop live-input arrow-nav-dop4" data-lbl="MV Peak E (m/s)"></div>
+            <div class="ui-cell"><label>AV Vmax (m/s)</label><input type="number" step="0.01" id="av-v" class="print-dop live-input arrow-nav-dop4" data-lbl="AV Vmax (m/s)"></div>
+            <div class="ui-cell"><label>AV Max PG</label><input type="text" id="av-pg" class="print-dop auto-calc arrow-nav-dop4 is-calculated" data-lbl="AV Max PG" readonly></div>
+            <div class="ui-cell"><label>AR</label><select id="val-ar" class="live-input arrow-nav-dop4" data-lbl="AR"><option value="None">None</option><option value="Trace">Trace</option><option value="Mild">Mild</option><option value="Moderate">Moderate</option><option value="Severe">Severe</option></select></div>
+            
+            <div class="ui-cell"><label>MV A (m/s)</label><input type="number" step="0.01" id="mv-a" class="print-dop live-input arrow-nav-dop4" data-lbl="MV Peak A (m/s)"></div>
+            <div class="ui-cell"><label>PV Vmax (m/s)</label><input type="number" step="0.01" id="pv-v" class="print-dop live-input arrow-nav-dop4" data-lbl="PV Vmax (m/s)"></div>
+            <div class="ui-cell"><label>PV Max PG</label><input type="text" id="pv-pg" class="print-dop auto-calc arrow-nav-dop4 is-calculated" data-lbl="PV Max PG" readonly></div>
+            <div class="ui-cell"><label>PR</label><select id="val-pr" class="live-input arrow-nav-dop4" data-lbl="PR"><option value="None">None</option><option value="Trace">Trace</option><option value="Mild">Mild</option><option value="Moderate">Moderate</option><option value="Severe">Severe</option></select></div>
+            
+            <div class="ui-cell"><label>E/A Ratio</label><input type="text" id="ea" class="print-dop auto-calc arrow-nav-dop4 is-calculated" data-lbl="E/A Ratio" readonly></div>
+            <div class="ui-cell"><label>TR Vmax (m/s)</label><input type="number" step="0.01" id="tr-v" class="print-dop live-input arrow-nav-dop4" data-lbl="TR Vmax (m/s)"></div>
+            <div class="ui-cell"><label>TR Max PG</label><input type="text" id="tr-pg" class="print-dop auto-calc arrow-nav-dop4 is-calculated" data-lbl="TR Max PG" readonly></div>
+            <div class="ui-cell"></div>
+            
+            <div class="ui-cell"><label>Lat E/e'</label><input type="number" step="0.1" id="ee" class="print-dop live-input arrow-nav-dop4" data-lbl="E/e' Ratio"></div>
+            <div class="ui-cell"><label>MV Mean PG</label><input type="number" id="mv-mpg" class="print-dop live-input arrow-nav-dop4" data-lbl="MV Mean PG"></div>
+            <div class="ui-cell"><label>MV Peak PG</label><input type="number" id="mv-ppg" class="print-dop live-input arrow-nav-dop4" data-lbl="MV Peak PG"></div>
+            <div class="ui-cell"><label>MR</label><select id="val-mr" class="live-input arrow-nav-dop4" data-lbl="MR"><option value="None">None</option><option value="Trace">Trace</option><option value="Mild">Mild</option><option value="Moderate">Moderate</option><option value="Severe">Severe</option></select></div>
+
+            <div class="ui-cell"><label>RVSP mmHg</label><input type="number" id="rvsp" class="print-dop live-input arrow-nav-dop4" data-lbl="RVSP (mmHg)"></div>
+            <div class="ui-cell"><label>TAPSE (mm)</label><input type="number" id="tapse" class="print-dop live-input arrow-nav-dop4" data-lbl="TAPSE (mm)"></div>
+            <div class="ui-cell"><label>IVC (mm)</label><input type="number" id="ivc" class="print-dop live-input arrow-nav-dop4" data-lbl="IVC (mm)"></div>
+            <div class="ui-cell"><label>HR (bpm)</label><input type="number" id="hr" class="print-dim live-input arrow-nav-dop4" data-lbl="HR (bpm)"></div>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid #e2e8f0; padding-top: 12px; margin-top: 5px;">
+          <div class="flex-row" style="align-items:center;">
+            <div class="ig ig-med"><label>Custom Name</label><input type="text" id="cust-lbl" class="live-input arrow-nav-cust" placeholder="e.g., MV VTI"></div>
+            <div class="ig ig-med"><label>Custom Value</label><input type="text" id="cust-val" class="print-dop custom-val live-input arrow-nav-cust" data-lbl-target="cust-lbl" placeholder="e.g., 15 cm" onkeydown="if(event.key === 'Enter') addCustomField()"></div>
+            <button class="btn-small" onclick="addCustomField()" style="margin-top:15px; margin-left:5px">+ Add</button>
+          </div>
+          <div id="custom-container" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+       <div class="panel" id="rwma-master-container">
+        <h3><span>Visual RWMA Mapper (17-Segment)</span><div><button class="btn-red btn-small" onclick="clearRWMA()">↺ Reset Map</button></div></h3>
+        <div class="rwma-container" id="source-rwma">
+          <div style="text-align:center"><div style="font-size:.8rem; font-weight:700; color:var(--accent); margin-bottom:5px">PSAX View</div><svg id="svg-psax" width="220" height="220" viewBox="0 0 220 220"></svg></div>
+          <div style="text-align:center"><div style="font-size:.8rem; font-weight:700; color:var(--accent); margin-bottom:5px">A4CH View</div><svg id="svg-a4ch" width="140" height="220" viewBox="0 0 140 220"></svg></div>
+          <div style="text-align:center"><div style="font-size:.8rem; font-weight:700; color:var(--accent); margin-bottom:5px">A2CH View</div><svg id="svg-a2ch" width="140" height="220" viewBox="0 0 140 220"></svg></div>
+        </div>
+        <div class="rwma-legend" id="source-legend">
+          <div><span class="leg-box" style="background:#fff"></span>Normal</div>
+          <div><span class="leg-box" style="background:#fef08a"></span>Hypokinetic</div>
+          <div><span class="leg-box" style="background:#fed7aa"></span>Akinetic</div>
+          <div><span class="leg-box" style="background:#fca5a5"></span>Dyskinetic</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="conclusion-section panel">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+        <h3 style="margin:0">REPORT <span id="loader" style="display:none; font-size:.75rem; color:var(--accent)" class="loading-pulse">Calculating...</span></h3>
+        <button id="lock-btn" type="button" onclick="toggleManualLock()" style="background: #ea580c; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; font-weight: bold;">
+          🔓 AUTO-SYNC: ON
+        </button>
+      </div>
+
+      <div class="toolbar" style="margin-bottom: 8px; display: flex; gap: 5px; background: #f1f5f9; padding: 5px; border-radius: 4px;">
+        <button type="button" class="btn-small" onclick="format('bold')" style="font-weight: bold; cursor: pointer; padding: 2px 8px; border: 1px solid #cbd5e1;">B</button>
+        <button type="button" class="btn-small" onclick="format('italic')" style="font-style: italic; cursor: pointer; padding: 2px 8px; border: 1px solid #cbd5e1;">I</button>
+        <button type="button" class="btn-small" onclick="format('underline')" style="cursor: pointer; padding: 2px 8px; border: 1px solid #cbd5e1;"><u>U</u></button>
+        <span id="lock-status-text" style="font-size: 0.65rem; color: #64748b; align-self: center; margin-left: auto;">ENGINE ACTIVE</span>
+      </div>
+
+      <div id="conclusion" class="smart-editor" contenteditable="true" style="min-height: 150px; border: 1px solid #cbd5e1; padding: 10px; border-radius: 4px; background: white; outline: none;"></div>
+    </div>
+  </div>
+</div>
+
+<div id="print-layout-1page">
+  <div class="letterhead-spacer"></div>
+  <div class="print-title">2D ECHOCARDIOGRAPHY REPORT</div>
+  <div class="pt-info-container">
+    <div class="pt-info-row">
+      <div class="pt-item">NAME: <span class="pt-val" id="p-name-1"></span></div>
+      <div class="pt-item">AGE: <span class="pt-val" id="p-age-1"></span></div>
+      <div class="pt-item">GENDER: <span class="pt-val" id="p-gender-1"></span></div>
+    </div>
+    <div class="pt-info-row">
+      <div class="pt-item">REFERRED BY: <span class="pt-val" id="p-ref-1"></span></div>
+      <div class="pt-item">DATE: <span class="pt-val" id="p-date-1"></span></div>
+    </div>
+  </div>
+  <div class="section-title">Dimension:</div>
+  <div id="dynamic-print-dim-1"></div>
+  <div class="section-title">Doppler:</div>
+  <div id="dynamic-print-dop-1"></div>
+  <div class="section-title">CONCLUSION:</div>
+  <div id="p-conclusion-1" class="conclusion-text"></div>
+  <div class="print-footer">
+    <div>Dr. Mit Panchani</div>
+    <div>MBBS, MD Medicine</div>
+    <div>Fellow in 2D Echocardiography</div>
+  </div>
+  <div class="disclaimer"><b>DISCLAIMER:</b> Echocardiography is an operator-dependent imaging modality. Measurements and interpretations are subject to inter-observer variability. Image quality and structural visualization are inherently limited by patient body habitus, acoustic windows, and physiological factors. This report represents the clinical interpretation of the findings at the time of the study, is intended for clinical correlation only, and is not to be used for medico-legal purposes.</div>
+</div>
+
+<div id="print-layout-2page">
+  <div class="page-1-wrapper">
+    <div class="letterhead-spacer"></div>
+    <div class="print-title">2D ECHOCARDIOGRAPHY REPORT</div>
+    <div class="pt-info-container">
+      <div class="pt-info-row">
+        <div class="pt-item">NAME: <span class="pt-val" id="p-name-2"></span></div>
+        <div class="pt-item">AGE: <span class="pt-val" id="p-age-2"></span></div>
+        <div class="pt-item">GENDER: <span class="pt-val" id="p-gender-2"></span></div>
+      </div>
+      <div class="pt-info-row">
+        <div class="pt-item">REFERRED BY: <span class="pt-val" id="p-ref-2"></span></div>
+        <div class="pt-item">DATE: <span class="pt-val" id="p-date-2"></span></div>
+      </div>
+    </div>
+    <div class="section-title">CONCLUSION:</div>
+    <div id="p-conclusion-2" class="conclusion-text"></div>
+    <div class="footer-wrapper">
+      <div class="print-footer">
+        <div>Dr. Mit Panchani</div>
+        <div>MBBS, MD Medicine</div>
+        <div>Fellow in 2D Echocardiography</div>
+      </div>
+      <div class="disclaimer"><b>DISCLAIMER:</b> Echocardiography is an operator-dependent imaging modality. Measurements and interpretations are subject to inter-observer variability. Image quality and structural visualization are inherently limited by patient body habitus, acoustic windows, and physiological factors. This report represents the clinical interpretation of the findings at the time of the study, is intended for clinical correlation only, and is not to be used for medico-legal purposes.</div>
+    </div>
+  </div>
+  <div class="page-break"></div>
+  <div class="section-title" style="margin-top:0">Regional Wall Motion Map:</div>
+  <div id="p-rwma-visual-2"></div>
+  <div id="p-rwma-legend-2"></div>
+  <div class="section-title">Dimension:</div>
+  <div id="dynamic-print-dim-2"></div>
+  <div class="section-title">Doppler:</div>
+  <div id="dynamic-print-dop-2"></div>
+</div>
+
+<script> 
+  const _0x372836=_0x1cb3;(function(_0x1327c6,_0x1a8642){const _0x255e3e=_0x1cb3,_0x33186e=_0x1327c6();while(!![]){try{const _0x24ec6a=-parseInt(_0x255e3e(0x1da))/0x1+-parseInt(_0x255e3e(0x20b))/0x2+-parseInt(_0x255e3e(0x1ad))/0x3*(-parseInt(_0x255e3e(0x1c6))/0x4)+parseInt(_0x255e3e(0x1ce))/0x5+-parseInt(_0x255e3e(0x146))/0x6+-parseInt(_0x255e3e(0x219))/0x7+parseInt(_0x255e3e(0x13b))/0x8;if(_0x24ec6a===_0x1a8642)break;else _0x33186e['push'](_0x33186e['shift']());}catch(_0x391c9c){_0x33186e['push'](_0x33186e['shift']());}}}(_0x2bce,0xed90c));let isManualLocked=![],debounceTimer;const API_URL='https://echo.drmjp93.workers.dev';function updateDateTime(){const _0x14695c=_0x1cb3,_0x32f1ea=new Date();document[_0x14695c(0x1e2)](_0x14695c(0x1de))[_0x14695c(0x14f)]=_0x32f1ea['toLocaleDateString'](_0x14695c(0x1bd),{'day':_0x14695c(0x14b),'month':_0x14695c(0x15e),'year':_0x14695c(0x187)}),document['getElementById'](_0x14695c(0x1a8))[_0x14695c(0x14f)]=_0x32f1ea[_0x14695c(0x1cd)](_0x14695c(0x1bd));}setInterval(updateDateTime,0x3e8),updateDateTime();let _0x1a2b=0x1,_0x3c4d;const _0x9a4=0x927c0,_0x2b1=0x3a98,_0x88f=function(_0x43c819){const _0x9477e9=_0x1cb3;let _0x933a57=0x0;for(let _0x441f29=0x0;_0x441f29<_0x43c819['length'];_0x441f29++){_0x933a57=(_0x933a57<<0x5)-_0x933a57+_0x43c819[_0x9477e9(0x14a)](_0x441f29),_0x933a57|=0x0;}return _0x933a57;},_0x77e=function(){const _0x11b2b9=_0x1cb3,_0x3d7c1e=new Date(),_0x122c46=[_0x3d7c1e[_0x11b2b9(0x1f1)](),_0x3d7c1e[_0x11b2b9(0x145)]()+0x1];return _0x122c46[_0x11b2b9(0x210)](_0x3e6bb5=>String(_0x3e6bb5)[_0x11b2b9(0x167)](0x2,'0'))[_0x11b2b9(0x118)]('');},_0xpin=document['getElementById'](_0x372836(0x1cc)),_0xmsg=document[_0x372836(0x1e2)](_0x372836(0x1f5)),_0xscr=document[_0x372836(0x1e2)]('auth-screen'),_0xapp=document[_0x372836(0x1e2)](_0x372836(0x196));function _0xStart(){const _0x419f40=_0x372836,_0x2d68d1=['mousedown','mousemove',_0x419f40(0x164),'scroll','touchstart'];let _0x5e08da;const _0x279155=()=>{const _0x2c0cba=_0x419f40;sessionStorage[_0x2c0cba(0x213)](_0x2c0cba(0x183),Date[_0x2c0cba(0x1ef)]()[_0x2c0cba(0x179)]()),document[_0x2c0cba(0x1e2)](_0x2c0cba(0x1b6))[_0x2c0cba(0x1dd)][_0x2c0cba(0x153)]=_0x2c0cba(0x1bf);};_0x2d68d1[_0x419f40(0x17b)](_0x226547=>window[_0x419f40(0x1a9)](_0x226547,()=>{clearTimeout(_0x5e08da),_0x5e08da=setTimeout(_0x279155,0xc8);})),_0x3c4d=setInterval(()=>{const _0x580186=_0x419f40,_0x4faa06=parseInt(sessionStorage[_0x580186(0x1bb)](_0x580186(0x183)))||Date[_0x580186(0x1ef)](),_0x1e94ae=Date[_0x580186(0x1ef)]()-_0x4faa06;if(_0x1e94ae>=_0x9a4)sessionStorage[_0x580186(0x16e)](_0x580186(0x1f8)),location['reload']();else _0x1e94ae>=_0x9a4-_0x2b1&&(document[_0x580186(0x1e2)](_0x580186(0x1b6))[_0x580186(0x1dd)]['display']=_0x580186(0x1d9),document[_0x580186(0x1e2)]('lock-timer')[_0x580186(0x14f)]=Math[_0x580186(0x180)]((_0x9a4-_0x1e94ae)/0x3e8));},0x3e8);}function _0xInit(){const _0x4556d8=_0x372836;if(sessionStorage[_0x4556d8(0x1bb)](_0x4556d8(0x1f8))==='true'){const _0x251628=parseInt(sessionStorage[_0x4556d8(0x1bb)](_0x4556d8(0x183)))||0x0;if(Date[_0x4556d8(0x1ef)]()-_0x251628<_0x9a4){_0xscr[_0x4556d8(0x1dd)][_0x4556d8(0x153)]=_0x4556d8(0x1bf),_0xapp[_0x4556d8(0x1dd)][_0x4556d8(0x153)]=_0x4556d8(0x1d9),initSVG(),loadFormState(),_0xStart();return;}else sessionStorage['removeItem'](_0x4556d8(0x1f8));}_0xscr['addEventListener'](_0x4556d8(0x136),()=>_0xpin[_0x4556d8(0x19f)]());if(_0x4556d8(0x140)in window||navigator[_0x4556d8(0x1d0)]>0x0){const _0x174a4b=document[_0x4556d8(0x1e2)](_0x4556d8(0x16c));if(_0x174a4b)_0x174a4b[_0x4556d8(0x1dd)][_0x4556d8(0x153)]=_0x4556d8(0x1d9);_0xscr[_0x4556d8(0x1a9)]('touchstart',()=>_0xpin[_0x4556d8(0x19f)](),{'passive':!![]});}const _0x2ab00a=[document[_0x4556d8(0x1e2)](_0x4556d8(0x18d)),document[_0x4556d8(0x1e2)]('dot1'),document[_0x4556d8(0x1e2)](_0x4556d8(0x18c)),document[_0x4556d8(0x1e2)](_0x4556d8(0x20a))],_0x5e6275=_0x20704a=>{const _0x351126=_0x4556d8;_0x2ab00a[_0x351126(0x17b)]((_0x5383f2,_0x549349)=>{const _0x3f8a85=_0x351126;if(_0x5383f2)_0x5383f2[_0x3f8a85(0x1f0)][_0x3f8a85(0x1a5)]('filled',_0x549349<_0x20704a);});};_0xpin['addEventListener'](_0x4556d8(0x12b),function(){const _0x229ef0=_0x4556d8;_0x5e6275(this['value'][_0x229ef0(0x15a)]);}),_0xpin[_0x4556d8(0x1a9)](_0x4556d8(0x12b),function(){const _0x325dec=_0x4556d8;if(this[_0x325dec(0x204)][_0x325dec(0x15a)]===0x4){if(_0x1a2b===0x1)_0x88f(this[_0x325dec(0x204)])===0x17f4de?(_0x1a2b=0x2,_0xmsg[_0x325dec(0x14f)]=atob(_0x325dec(0x1ed)),_0xmsg['className']=_0x325dec(0x1c0),this[_0x325dec(0x204)]='',[0x0,0x1,0x2,0x3][_0x325dec(0x17b)](_0x23bc2e=>{const _0x1a07cf=_0x325dec,_0x38dd8a=document[_0x1a07cf(0x1e2)](_0x1a07cf(0x1e4)+_0x23bc2e);if(_0x38dd8a)_0x38dd8a[_0x1a07cf(0x1f0)][_0x1a07cf(0x200)]('filled');})):_0xFail(this,atob(_0x325dec(0x1e6)));else _0x1a2b===0x2&&(this[_0x325dec(0x204)]===_0x77e()?(_0xmsg[_0x325dec(0x14f)]=atob(_0x325dec(0x209)),_0xmsg['className']=_0x325dec(0x1c0),sessionStorage['setItem']('e_unl','true'),sessionStorage['setItem']('e_act',Date[_0x325dec(0x1ef)]()['toString']()),setTimeout(()=>{const _0x5ca8cc=_0x325dec;_0xscr['style'][_0x5ca8cc(0x168)]=_0x5ca8cc(0x122),_0xscr[_0x5ca8cc(0x1dd)][_0x5ca8cc(0x1e9)]='0',setTimeout(()=>{const _0x4ae2e0=_0x5ca8cc;_0xscr[_0x4ae2e0(0x1dd)][_0x4ae2e0(0x153)]=_0x4ae2e0(0x1bf),_0xapp['style'][_0x4ae2e0(0x153)]='block',initSVG(),loadFormState(),_0xStart();},0x258);},0x190)):(_0xFail(this,atob(_0x325dec(0x18e))),_0x1a2b=0x1));}});}function _0x1cb3(_0x2804de,_0x296d28){_0x2804de=_0x2804de-0x114;const _0x2bce9e=_0x2bce();let _0x1cb31c=_0x2bce9e[_0x2804de];return _0x1cb31c;}function _0xFail(_0x325dac,_0x5f4aee){const _0xa18407=_0x372836;_0xmsg[_0xa18407(0x14f)]=_0x5f4aee,_0xmsg['className']=_0xa18407(0x188),document[_0xa18407(0x127)](_0xa18407(0x1f6))['classList'][_0xa18407(0x158)](_0xa18407(0x123)),setTimeout(()=>{const _0x32dd98=_0xa18407;_0x325dac[_0x32dd98(0x204)]='',[0x0,0x1,0x2,0x3][_0x32dd98(0x17b)](_0x27a640=>{const _0x7b85ac=_0x32dd98,_0x170fd7=document[_0x7b85ac(0x1e2)]('dot'+_0x27a640);if(_0x170fd7)_0x170fd7[_0x7b85ac(0x1f0)][_0x7b85ac(0x200)]('filled');}),document[_0x32dd98(0x127)](_0x32dd98(0x1f6))['classList'][_0x32dd98(0x200)](_0x32dd98(0x123)),_0xmsg[_0x32dd98(0x14f)]=_0x1a2b===0x2?atob('QXV0aGVudGljYXRpbmcuLi4='):'',_0xmsg[_0x32dd98(0x193)]=_0x32dd98(0x1c0);},0x320);}_0xInit();function toggleRef(){const _0x434f35=_0x372836;let _0x4c6b15=document['getElementById'](_0x434f35(0x1fc));_0x4c6b15[_0x434f35(0x1dd)][_0x434f35(0x153)]=_0x4c6b15[_0x434f35(0x1dd)][_0x434f35(0x153)]===_0x434f35(0x1d9)?_0x434f35(0x1bf):_0x434f35(0x1d9);}function toggleMap(){const _0x50f1df=_0x372836;let _0x11b109=document[_0x50f1df(0x1e2)]('map-panel');_0x11b109[_0x50f1df(0x1dd)]['display']=_0x11b109[_0x50f1df(0x1dd)][_0x50f1df(0x153)]==='block'?_0x50f1df(0x1bf):'block';}document['getElementById'](_0x372836(0x196))['addEventListener'](_0x372836(0x164),_0x3891db=>{const _0x8cc9cd=_0x372836;if(_0x3891db[_0x8cc9cd(0x175)][_0x8cc9cd(0x1d5)]==='number'){const _0x30a130=[_0x8cc9cd(0x17e),'Tab','ArrowLeft','ArrowRight',_0x8cc9cd(0x182),_0x8cc9cd(0x1c5),'.'],_0x4c8902=/^[0-9]$/[_0x8cc9cd(0x170)](_0x3891db['key']);!_0x30a130[_0x8cc9cd(0x12e)](_0x3891db[_0x8cc9cd(0x194)])&&!_0x4c8902&&_0x3891db['preventDefault']();}});function toggleManualLock(){const _0xe1d6e3=_0x372836;isManualLocked=!isManualLocked;const _0x594c24=document['getElementById']('lock-btn'),_0x4b10df=document['getElementById'](_0xe1d6e3(0x19a));if(isManualLocked){_0x594c24[_0xe1d6e3(0x1af)]=_0xe1d6e3(0x197),_0x594c24['style']['background']=_0xe1d6e3(0x150);if(_0x4b10df)_0x4b10df[_0xe1d6e3(0x1af)]=_0xe1d6e3(0x1b9);}else{_0x594c24[_0xe1d6e3(0x1af)]=_0xe1d6e3(0x21a),_0x594c24[_0xe1d6e3(0x1dd)][_0xe1d6e3(0x1b7)]=_0xe1d6e3(0x1b5);if(_0x4b10df)_0x4b10df[_0xe1d6e3(0x1af)]='ENGINE\x20ACTIVE';runLiveEngine();}}function format(_0x2d0bc9){const _0x1208d4=_0x372836;if(!isManualLocked)toggleManualLock();document['execCommand'](_0x2d0bc9,![],null),document['getElementById'](_0x1208d4(0x16f))[_0x1208d4(0x19f)](),saveFormState();}document[_0x372836(0x1e2)](_0x372836(0x16f))['addEventListener']('keydown',function(_0x3fa061){const _0x5aa60e=_0x372836,_0xd9ad84=_0x3fa061['ctrlKey']&&(_0x3fa061[_0x5aa60e(0x194)]==='b'||_0x3fa061[_0x5aa60e(0x194)]==='i'||_0x3fa061[_0x5aa60e(0x194)]==='u'),_0x41680a=_0x3fa061['key'][_0x5aa60e(0x15a)]===0x1&&!_0x3fa061[_0x5aa60e(0x1b8)]&&!_0x3fa061[_0x5aa60e(0x189)];(_0xd9ad84||_0x41680a)&&!isManualLocked&&toggleManualLock();});function polarToCartesian(_0xa55acb,_0x2fab74,_0x31cf50,_0x1c7e41){const _0x4bdd71=_0x372836;let _0x542acd=(_0x1c7e41-0x5a)*Math['PI']/0xb4;return{'x':_0xa55acb+_0x31cf50*Math[_0x4bdd71(0x13a)](_0x542acd),'y':_0x2fab74+_0x31cf50*Math[_0x4bdd71(0x130)](_0x542acd)};}function describeArc(_0x1935e7,_0x339da0,_0x42ed70,_0x32bf30,_0x2913e0,_0x45fdb9){const _0x313a8b=_0x372836;let _0x1efeb5=polarToCartesian(_0x1935e7,_0x339da0,_0x42ed70,_0x45fdb9),_0x397f8b=polarToCartesian(_0x1935e7,_0x339da0,_0x42ed70,_0x2913e0),_0x54611d=polarToCartesian(_0x1935e7,_0x339da0,_0x32bf30,_0x45fdb9),_0x51d270=polarToCartesian(_0x1935e7,_0x339da0,_0x32bf30,_0x2913e0),_0x439697=_0x45fdb9-_0x2913e0<=0xb4?'0':'1';return['M',_0x54611d['x'],_0x54611d['y'],'A',_0x32bf30,_0x32bf30,0x0,_0x439697,0x0,_0x51d270['x'],_0x51d270['y'],'L',_0x397f8b['x'],_0x397f8b['y'],'A',_0x42ed70,_0x42ed70,0x0,_0x439697,0x1,_0x1efeb5['x'],_0x1efeb5['y'],'Z'][_0x313a8b(0x118)]('\x20');}function initSVG(){const _0x4d6f05=_0x372836;let _0xd1719e=_0x4d6f05(0x1aa);const _0x5d3b3c=[{'name':_0x4d6f05(0x16d),'art':_0x4d6f05(0x14e),'s':-0x2d,'e':0x2d,'txt':'A'},{'name':'Apical\x20lateral','art':_0x4d6f05(0x14d),'s':0x2d,'e':0x87,'txt':'L'},{'name':_0x4d6f05(0x173),'art':_0x4d6f05(0x19e),'s':0x87,'e':0xe1,'txt':'I'},{'name':_0x4d6f05(0x116),'art':_0x4d6f05(0x14e),'s':0xe1,'e':0x13b,'txt':'S'}];_0x5d3b3c[_0x4d6f05(0x17b)](_0xb403e5=>{const _0x406bc4=_0x4d6f05;let _0x3f6f18=_0xb403e5['name'][_0x406bc4(0x216)]()[_0x406bc4(0x1b4)](/ /g,'-'),_0xa5dfd1=describeArc(0x6e,0x6e,0x16,0x33,_0xb403e5['s'],_0xb403e5['e']);_0xd1719e+=_0x406bc4(0x190)+_0x3f6f18+_0x406bc4(0x1dc)+_0xb403e5[_0x406bc4(0x207)]+_0x406bc4(0x15c)+_0xb403e5[_0x406bc4(0x166)]+_0x406bc4(0x139)+_0xa5dfd1+'\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>'+_0xb403e5['name']+'\x20('+_0xb403e5['art']+')</title></path>';});const _0x5eca6a=[{'name':_0x4d6f05(0x1be),'art':_0x4d6f05(0x14e),'s':-0x1e,'e':0x1e,'txt':'A'},{'name':_0x4d6f05(0x1a6),'art':_0x4d6f05(0x14d),'s':0x1e,'e':0x5a,'txt':'AL'},{'name':_0x4d6f05(0x1a3),'art':_0x4d6f05(0x14d),'s':0x5a,'e':0x96,'txt':'IL'},{'name':_0x4d6f05(0x138),'art':_0x4d6f05(0x19e),'s':0x96,'e':0xd2,'txt':'I'},{'name':_0x4d6f05(0x215),'art':_0x4d6f05(0x19e),'s':0xd2,'e':0x10e,'txt':'IS'},{'name':_0x4d6f05(0x12a),'art':'LAD','s':0x10e,'e':0x14a,'txt':'AS'}];_0x5eca6a[_0x4d6f05(0x17b)](_0x9a9f92=>{const _0x1e3f72=_0x4d6f05;let _0x2b8a74=_0x9a9f92[_0x1e3f72(0x207)][_0x1e3f72(0x216)]()[_0x1e3f72(0x1b4)](/ /g,'-'),_0x2c5520=describeArc(0x6e,0x6e,0x33,0x50,_0x9a9f92['s'],_0x9a9f92['e']);_0xd1719e+=_0x1e3f72(0x190)+_0x2b8a74+'\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22'+_0x9a9f92[_0x1e3f72(0x207)]+'\x22\x20data-art=\x22'+_0x9a9f92[_0x1e3f72(0x166)]+_0x1e3f72(0x139)+_0x2c5520+'\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>'+_0x9a9f92['name']+'\x20('+_0x9a9f92['art']+_0x1e3f72(0x152);let _0x366a20=polarToCartesian(0x6e,0x6e,65.5,_0x9a9f92['s']+0x1e);_0xd1719e+=_0x1e3f72(0x133)+_0x366a20['x']+_0x1e3f72(0x143)+(_0x366a20['y']+0x4)+_0x1e3f72(0x162)+_0x9a9f92[_0x1e3f72(0x1a7)]+_0x1e3f72(0x1e8);});const _0x20c6df=[{'name':_0x4d6f05(0x144),'art':_0x4d6f05(0x14e),'s':-0x1e,'e':0x1e,'txt':'A'},{'name':_0x4d6f05(0x1e5),'art':_0x4d6f05(0x14d),'s':0x1e,'e':0x5a,'txt':'AL'},{'name':_0x4d6f05(0x20e),'art':_0x4d6f05(0x14d),'s':0x5a,'e':0x96,'txt':'IL'},{'name':_0x4d6f05(0x1c3),'art':'RCA','s':0x96,'e':0xd2,'txt':'I'},{'name':_0x4d6f05(0x157),'art':_0x4d6f05(0x19e),'s':0xd2,'e':0x10e,'txt':'IS'},{'name':_0x4d6f05(0x212),'art':'LAD','s':0x10e,'e':0x14a,'txt':'AS'}];_0x20c6df['forEach'](_0x3e10e8=>{const _0x27c8fc=_0x4d6f05;let _0x2bad36=_0x3e10e8[_0x27c8fc(0x207)][_0x27c8fc(0x216)]()[_0x27c8fc(0x1b4)](/ /g,'-'),_0x24c4fa=describeArc(0x6e,0x6e,0x50,0x6d,_0x3e10e8['s'],_0x3e10e8['e']);_0xd1719e+=_0x27c8fc(0x190)+_0x2bad36+_0x27c8fc(0x1dc)+_0x3e10e8[_0x27c8fc(0x207)]+'\x22\x20data-art=\x22'+_0x3e10e8[_0x27c8fc(0x166)]+_0x27c8fc(0x139)+_0x24c4fa+_0x27c8fc(0x11a)+_0x3e10e8[_0x27c8fc(0x207)]+'\x20('+_0x3e10e8[_0x27c8fc(0x166)]+')</title></path>';let _0x51a150=polarToCartesian(0x6e,0x6e,94.5,_0x3e10e8['s']+0x1e);_0xd1719e+=_0x27c8fc(0x133)+_0x51a150['x']+_0x27c8fc(0x143)+(_0x51a150['y']+0x4)+_0x27c8fc(0x20c)+_0x3e10e8[_0x27c8fc(0x1a7)]+'</text>';}),document[_0x4d6f05(0x1e2)](_0x4d6f05(0x208))[_0x4d6f05(0x1af)]=_0xd1719e,document[_0x4d6f05(0x1e2)](_0x4d6f05(0x12f))[_0x4d6f05(0x1af)]=_0x4d6f05(0x11c),document[_0x4d6f05(0x1e2)]('svg-a2ch')[_0x4d6f05(0x1af)]='\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a2-apical-cap\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Apical\x20cap\x22\x20data-art=\x22LAD\x20(Primary)\x22\x20data-val=\x22N\x22\x20d=\x22M\x2020,100\x20C\x2020,30\x20120,30\x20120,100\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Apical\x20cap\x20(LAD)</title></path>\x0a\x20\x20\x20\x20\x20\x20<text\x20x=\x2270\x22\x20y=\x2270\x22\x20font-size=\x2210\x22\x20font-weight=\x22bold\x22\x20text-anchor=\x22middle\x22\x20fill=\x22#475569\x22\x20pointer-events=\x22none\x22>Apex</text>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a2-apical-inferior\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Apical\x20inferior\x22\x20data-art=\x22RCA\x22\x20data-val=\x22N\x22\x20d=\x22M\x2020,100\x20L\x2065,100\x20L\x2065,136\x20L\x2020,136\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Apical\x20inferior\x20(RCA)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a2-mid-inferior\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Mid\x20inferior\x22\x20data-art=\x22RCA\x22\x20data-val=\x22N\x22\x20d=\x22M\x2020,136\x20L\x2065,136\x20L\x2065,173\x20L\x2020,173\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Mid\x20inferior\x20(RCA)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a2-basal-inferior\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Basal\x20inferior\x22\x20data-art=\x22RCA\x22\x20data-val=\x22N\x22\x20d=\x22M\x2020,173\x20L\x2065,173\x20L\x2065,210\x20L\x2020,210\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Basal\x20inferior\x20(RCA)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a2-apical-anterior\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Apical\x20anterior\x22\x20data-art=\x22LAD\x22\x20data-val=\x22N\x22\x20d=\x22M\x2075,100\x20L\x20120,100\x20L\x20120,136\x20L\x2075,136\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Apical\x20anterior\x20(LAD)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a2-mid-anterior\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Mid\x20anterior\x22\x20data-art=\x22LAD\x22\x20data-val=\x22N\x22\x20d=\x22M\x2075,136\x20L\x20120,136\x20L\x20120,173\x20L\x2075,173\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Mid\x20anterior\x20(LAD)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a2-basal-anterior\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Basal\x20anterior\x22\x20data-art=\x22LAD\x22\x20data-val=\x22N\x22\x20d=\x22M\x2075,173\x20L\x20120,173\x20L\x20120,210\x20L\x2075,210\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Basal\x20anterior\x20(LAD)</title></path>\x0a\x20\x20\x20\x20\x20\x20<text\x20x=\x2242.5\x22\x20y=\x22155\x22\x20font-size=\x2210\x22\x20font-weight=\x22bold\x22\x20text-anchor=\x22middle\x22\x20fill=\x22#475569\x22\x20pointer-events=\x22none\x22\x20transform=\x22rotate(-90\x2042.5,155)\x22>Inferior</text>\x0a\x20\x20\x20\x20\x20\x20<text\x20x=\x2297.5\x22\x20y=\x22155\x22\x20font-size=\x2210\x22\x20font-weight=\x22bold\x22\x20text-anchor=\x22middle\x22\x20fill=\x22#475569\x22\x20pointer-events=\x22none\x22\x20transform=\x22rotate(90\x2097.5,155)\x22>Anterior</text>\x0a\x20\x20\x20\x20';}function toggleRWMA(_0xa053a3){const _0x2c272d=_0x372836,_0x444c54=['N','Hypo',_0x2c272d(0x15d),_0x2c272d(0x160)],_0x50e610={'N':_0x2c272d(0x1b1),'Hypo':'#fef08a','Aki':'#fed7aa','Dys':_0x2c272d(0x155)};let _0x315325=_0x444c54[_0x2c272d(0x1a2)](_0xa053a3['getAttribute'](_0x2c272d(0x1d3))),_0x136d40=_0x444c54[(_0x315325+0x1)%_0x444c54['length']];_0xa053a3['setAttribute'](_0x2c272d(0x1d3),_0x136d40),_0xa053a3[_0x2c272d(0x16a)](_0x2c272d(0x12d),_0x50e610[_0x136d40]),runLiveEngine();}function clearRWMA(){const _0xa7fa20=_0x372836;document[_0xa7fa20(0x176)]('.rwma-path')['forEach'](_0x41a88e=>{const _0xbc598c=_0xa7fa20;_0x41a88e['setAttribute'](_0xbc598c(0x1d3),'N'),_0x41a88e['setAttribute']('fill',_0xbc598c(0x1b1));}),runLiveEngine();}function togglePill(_0x48f38e){const _0x4de338=_0x372836;_0x48f38e[_0x4de338(0x1f0)][_0x4de338(0x1a5)]('active'),runLiveEngine();}function addCustomField(_0x4b0f44='',_0x1b7d20=''){const _0x73e36a=_0x372836,_0x5a10c4=document['getElementById'](_0x73e36a(0x120)),_0x133d3b=document['createElement'](_0x73e36a(0x191));_0x133d3b[_0x73e36a(0x193)]='flex-row\x20custom-row',_0x133d3b['style'][_0x73e36a(0x1db)]='8px',_0x133d3b[_0x73e36a(0x1dd)][_0x73e36a(0x214)]=_0x73e36a(0x17d),_0x133d3b[_0x73e36a(0x1af)]=_0x73e36a(0x159)+_0x4b0f44+_0x73e36a(0x195)+_0x1b7d20+_0x73e36a(0x117),_0x5a10c4[_0x73e36a(0x13f)](_0x133d3b),runLiveEngine();}function saveFormState(){const _0x3511bd=_0x372836;let _0x12808f={'rwma':{},'customFields':[],'pills':[]};document[_0x3511bd(0x176)]('.live-input')[_0x3511bd(0x17b)](_0x1854ab=>{const _0xfb0949=_0x3511bd;if(_0x1854ab['id'])_0x12808f[_0x1854ab['id']]=_0x1854ab[_0xfb0949(0x204)];}),document[_0x3511bd(0x176)](_0x3511bd(0x1f4))[_0x3511bd(0x17b)](_0x5da7c5=>_0x12808f[_0x3511bd(0x13e)][_0x5da7c5['id']]=_0x5da7c5[_0x3511bd(0x1d6)]('data-val')),document['querySelectorAll'](_0x3511bd(0x132))[_0x3511bd(0x17b)](_0x3c399b=>_0x12808f[_0x3511bd(0x17c)][_0x3511bd(0x1b0)]({'name':_0x3c399b['querySelector'](_0x3511bd(0x192))[_0x3511bd(0x204)],'val':_0x3c399b['querySelector'](_0x3511bd(0x11b))[_0x3511bd(0x204)]})),document['querySelectorAll'](_0x3511bd(0x1bc))[_0x3511bd(0x17b)](_0xca252c=>_0x12808f[_0x3511bd(0x114)]['push'](_0xca252c['id'])),localStorage['setItem']('echoFormState',JSON[_0x3511bd(0x18f)](_0x12808f));}function loadFormState(){const _0x591616=_0x372836;let _0x84f30f=localStorage[_0x591616(0x1bb)](_0x591616(0x18b));if(_0x84f30f){let _0x38f438=JSON[_0x591616(0x1c8)](_0x84f30f);document['querySelectorAll'](_0x591616(0x151))[_0x591616(0x17b)](_0x530233=>{const _0x2c411e=_0x591616;if(_0x530233['id']&&_0x38f438[_0x530233['id']]!==undefined)_0x530233[_0x2c411e(0x204)]=_0x38f438[_0x530233['id']];});const _0x31068b={'N':'#ffffff','Hypo':_0x591616(0x126),'Aki':'#fed7aa','Dys':'#fca5a5'};_0x38f438[_0x591616(0x13e)]&&Object[_0x591616(0x15b)](_0x38f438[_0x591616(0x13e)])[_0x591616(0x17b)](_0x31620b=>{const _0x1ee262=_0x591616;let _0x327c7a=document[_0x1ee262(0x1e2)](_0x31620b);_0x327c7a&&(_0x327c7a[_0x1ee262(0x16a)]('data-val',_0x38f438['rwma'][_0x31620b]),_0x327c7a[_0x1ee262(0x16a)](_0x1ee262(0x12d),_0x31068b[_0x38f438['rwma'][_0x31620b]]));});document['getElementById'](_0x591616(0x120))['innerHTML']='';if(_0x38f438[_0x591616(0x17c)])_0x38f438[_0x591616(0x17c)][_0x591616(0x17b)](_0x231fb9=>addCustomField(_0x231fb9[_0x591616(0x207)],_0x231fb9[_0x591616(0x115)]));_0x38f438[_0x591616(0x114)]&&_0x38f438[_0x591616(0x114)][_0x591616(0x17b)](_0x51237b=>{const _0x33df07=_0x591616;let _0x7af191=document[_0x33df07(0x1e2)](_0x51237b);if(_0x7af191)_0x7af191[_0x33df07(0x1f0)][_0x33df07(0x158)](_0x33df07(0x21b));}),runLiveEngine();}else document[_0x591616(0x1e2)](_0x591616(0x1b3))['valueAsDate']=new Date(),runLiveEngine();}function clearForm(){const _0x2684b3=_0x372836;if(confirm(_0x2684b3(0x1c1))){localStorage[_0x2684b3(0x16e)](_0x2684b3(0x18b)),document[_0x2684b3(0x176)](_0x2684b3(0x151))[_0x2684b3(0x17b)](_0x1b2780=>{const _0x3f5af7=_0x2684b3;if(_0x1b2780[_0x3f5af7(0x125)]==='SELECT')_0x1b2780['value']=_0x3f5af7(0x181);else _0x1b2780[_0x3f5af7(0x204)]='';}),clearRWMA(),document[_0x2684b3(0x176)]('.pill.active')[_0x2684b3(0x17b)](_0x22c9db=>_0x22c9db[_0x2684b3(0x1f0)][_0x2684b3(0x200)]('active')),document[_0x2684b3(0x1e2)]('custom-container')[_0x2684b3(0x1af)]='',document[_0x2684b3(0x1e2)](_0x2684b3(0x1b3))[_0x2684b3(0x119)]=new Date(),document[_0x2684b3(0x176)]('.auto-calc')[_0x2684b3(0x17b)](_0x59d2fe=>_0x59d2fe[_0x2684b3(0x204)]='');if(isManualLocked)toggleManualLock();runLiveEngine();}}async function runLiveEngine(){const _0x9302e8=_0x372836;if(isManualLocked)return;saveFormState();const _0x2badec=document[_0x9302e8(0x1e2)]('hr'),_0x40ddec=document[_0x9302e8(0x1e2)](_0x9302e8(0x19b)),_0x45ce5e=document[_0x9302e8(0x1e2)](_0x9302e8(0x1ae));if(_0x2badec&&_0x2badec['value']){const _0x82bbb7=parseInt(_0x2badec['value']);if(_0x82bbb7>0x64)_0x40ddec?.[_0x9302e8(0x1f0)][_0x9302e8(0x158)](_0x9302e8(0x21b));else _0x40ddec?.[_0x9302e8(0x1f0)][_0x9302e8(0x200)](_0x9302e8(0x21b));if(_0x82bbb7<0x3c)_0x45ce5e?.[_0x9302e8(0x1f0)]['add'](_0x9302e8(0x21b));else _0x45ce5e?.[_0x9302e8(0x1f0)][_0x9302e8(0x200)]('active');}else _0x40ddec?.[_0x9302e8(0x1f0)]['remove']('active'),_0x45ce5e?.[_0x9302e8(0x1f0)][_0x9302e8(0x200)](_0x9302e8(0x21b));const _0x3b745=document[_0x9302e8(0x1e2)]('loader');if(_0x3b745)_0x3b745[_0x9302e8(0x1dd)]['display']=_0x9302e8(0x1d7);let _0x1a7509={'inputs':{},'pills':[],'rwma':[]};document['querySelectorAll']('.live-input')['forEach'](_0x31547e=>{const _0x3b44ca=_0x9302e8;if(_0x31547e['id'])_0x1a7509[_0x3b44ca(0x154)][_0x31547e['id']]=_0x31547e[_0x3b44ca(0x204)];}),document[_0x9302e8(0x176)](_0x9302e8(0x1bc))[_0x9302e8(0x17b)](_0x491425=>_0x1a7509['pills'][_0x9302e8(0x1b0)]({'id':_0x491425['id'],'txt':_0x491425['getAttribute'](_0x9302e8(0x137))})),document[_0x9302e8(0x176)]('.rwma-path')[_0x9302e8(0x17b)](_0x551baa=>{const _0x3b41c1=_0x9302e8;let _0x345947=_0x551baa[_0x3b41c1(0x1d6)]('data-val');if(_0x345947!=='N')_0x1a7509[_0x3b41c1(0x13e)][_0x3b41c1(0x1b0)]({'val':_0x345947,'wall':_0x551baa[_0x3b41c1(0x1d6)]('data-wall'),'arts':_0x551baa[_0x3b41c1(0x1d6)]('data-art')[_0x3b41c1(0x18a)]('/')});}),clearTimeout(debounceTimer),debounceTimer=setTimeout(async()=>{const _0x2c77dd=_0x9302e8;try{const _0x48074f=await fetch(API_URL,{'method':_0x2c77dd(0x121),'headers':{'Content-Type':_0x2c77dd(0x1ea)},'body':JSON[_0x2c77dd(0x18f)](_0x1a7509)});if(_0x48074f['ok']){const _0x1c0305=await _0x48074f[_0x2c77dd(0x1fa)]();_0x1c0305[_0x2c77dd(0x16f)]&&!isManualLocked&&(document['getElementById'](_0x2c77dd(0x16f))[_0x2c77dd(0x1af)]=_0x1c0305[_0x2c77dd(0x16f)]),_0x1c0305['calculated']&&[_0x2c77dd(0x205),'ea',_0x2c77dd(0x177),_0x2c77dd(0x1fd),'tr-pg']['forEach'](_0x109b2d=>{const _0x14ea90=_0x2c77dd,_0x188c32=document[_0x14ea90(0x1e2)](_0x109b2d);if(_0x188c32)_0x188c32[_0x14ea90(0x204)]=_0x1c0305[_0x14ea90(0x128)][_0x109b2d]||'';});}else{console[_0x2c77dd(0x11d)](_0x2c77dd(0x21d));if(!isManualLocked)document[_0x2c77dd(0x1e2)](_0x2c77dd(0x16f))[_0x2c77dd(0x1af)]=_0x2c77dd(0x15f);}}catch(_0x298214){console['error']('Fetch\x20Error:',_0x298214);if(!isManualLocked)document['getElementById'](_0x2c77dd(0x16f))[_0x2c77dd(0x1af)]=_0x2c77dd(0x13c);}if(_0x3b745)_0x3b745['style'][_0x2c77dd(0x153)]=_0x2c77dd(0x1bf);},0x190);}document[_0x372836(0x1e2)](_0x372836(0x196))[_0x372836(0x1a9)]('input',_0x97a517=>{const _0x5be2b0=_0x372836;if(_0x97a517[_0x5be2b0(0x175)]['classList'][_0x5be2b0(0x211)](_0x5be2b0(0x172)))runLiveEngine();});function build3ColTable(_0x11e342){const _0x4f4a3b=_0x372836,_0x4ce869=document[_0x4f4a3b(0x176)](_0x11e342);let _0x3a6814=[];_0x4ce869[_0x4f4a3b(0x17b)](_0x4b9ef4=>{const _0x666908=_0x4f4a3b;if(_0x4b9ef4[_0x666908(0x204)][_0x666908(0x186)]()!==''){let _0x1f0378=_0x4b9ef4['getAttribute']('data-lbl');if(_0x4b9ef4['classList']['contains'](_0x666908(0x1f7))||_0x4b9ef4[_0x666908(0x1f0)][_0x666908(0x211)]('custom-val')){let _0x1d8e5a=_0x4b9ef4[_0x666908(0x1d6)]('data-lbl-target');if(_0x1d8e5a)_0x1f0378=document[_0x666908(0x1e2)](_0x1d8e5a)[_0x666908(0x204)]||_0x666908(0x1f3);else{let _0x4c7994=_0x4b9ef4[_0x666908(0x17f)][_0x666908(0x17f)][_0x666908(0x127)](_0x666908(0x192));_0x1f0378=_0x4c7994?_0x4c7994['value']||_0x666908(0x1f3):'Custom';}}_0x3a6814[_0x666908(0x1b0)]({'lbl':_0x1f0378,'val':_0x4b9ef4['value']});}});if(_0x3a6814['length']===0x0)return _0x4f4a3b(0x169);let _0x254858=_0x4f4a3b(0x185);const _0x3918ec=0x4;for(let _0x6701d4=0x0;_0x6701d4<_0x3a6814[_0x4f4a3b(0x15a)];_0x6701d4+=_0x3918ec){_0x254858+=_0x4f4a3b(0x171);for(let _0x57c507=0x0;_0x57c507<_0x3918ec;_0x57c507++){_0x3a6814[_0x6701d4+_0x57c507]?_0x254858+='<td\x20class=\x22lbl\x22>'+_0x3a6814[_0x6701d4+_0x57c507]['lbl']+'</td><td\x20class=\x22val\x22>'+_0x3a6814[_0x6701d4+_0x57c507][_0x4f4a3b(0x115)]+_0x4f4a3b(0x1df):_0x254858+=_0x4f4a3b(0x1fb);}_0x254858+='</tr>';}return _0x254858+_0x4f4a3b(0x202);}function prepareReportData(){const _0x2dc7f6=_0x372836;let _0x2119a6=![];document[_0x2dc7f6(0x176)](_0x2dc7f6(0x1f4))['forEach'](_0x2c09fb=>{const _0x16bcc9=_0x2dc7f6;if(_0x2c09fb[_0x16bcc9(0x1d6)](_0x16bcc9(0x1d3))!=='N')_0x2119a6=!![];});let _0x26605b=document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x1b3))['value'];if(_0x26605b){let _0xd890a6=_0x26605b['split']('-');_0x26605b=_0xd890a6[0x2]+'-'+_0xd890a6[0x1]+'-'+_0xd890a6[0x0];}let _0x266c40='';return _0x2119a6?(document['getElementById'](_0x2dc7f6(0x1c4))[_0x2dc7f6(0x1f0)][_0x2dc7f6(0x200)]('print-active'),document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x20f))[_0x2dc7f6(0x1f0)]['add']('print-active'),_0x266c40=_0x2dc7f6(0x20f),document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x1c2))[_0x2dc7f6(0x203)]=document['getElementById'](_0x2dc7f6(0x1eb))[_0x2dc7f6(0x204)],document[_0x2dc7f6(0x1e2)]('p-age-2')[_0x2dc7f6(0x203)]=document['getElementById'](_0x2dc7f6(0x1a1))[_0x2dc7f6(0x204)],document['getElementById'](_0x2dc7f6(0x1a0))[_0x2dc7f6(0x203)]=document['getElementById'](_0x2dc7f6(0x178))[_0x2dc7f6(0x204)],document[_0x2dc7f6(0x1e2)]('p-ref-2')[_0x2dc7f6(0x203)]=document['getElementById']('pt-ref')['value'],document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x1c7))[_0x2dc7f6(0x203)]=_0x26605b,document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x17a))['innerHTML']=document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x16f))[_0x2dc7f6(0x1af)],document['getElementById'](_0x2dc7f6(0x1e7))[_0x2dc7f6(0x1af)]=build3ColTable(_0x2dc7f6(0x1ac)),document[_0x2dc7f6(0x1e2)]('dynamic-print-dop-2')[_0x2dc7f6(0x1af)]=build3ColTable(_0x2dc7f6(0x16b)),document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x161))[_0x2dc7f6(0x1af)]='',document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x161))[_0x2dc7f6(0x13f)](document[_0x2dc7f6(0x1e2)]('source-rwma')[_0x2dc7f6(0x1f2)](!![])),document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x217))[_0x2dc7f6(0x1af)]='',document[_0x2dc7f6(0x1e2)]('p-rwma-legend-2')[_0x2dc7f6(0x13f)](document['getElementById'](_0x2dc7f6(0x174))[_0x2dc7f6(0x1f2)](!![]))):(document['getElementById'](_0x2dc7f6(0x20f))[_0x2dc7f6(0x1f0)][_0x2dc7f6(0x200)](_0x2dc7f6(0x1d4)),document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x1c4))['classList']['add'](_0x2dc7f6(0x1d4)),_0x266c40=_0x2dc7f6(0x1c4),document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x12c))['innerText']=document['getElementById'](_0x2dc7f6(0x1eb))[_0x2dc7f6(0x204)],document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x1d2))[_0x2dc7f6(0x203)]=document['getElementById'](_0x2dc7f6(0x1a1))[_0x2dc7f6(0x204)],document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x218))[_0x2dc7f6(0x203)]=document['getElementById'](_0x2dc7f6(0x178))['value'],document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x1c9))[_0x2dc7f6(0x203)]=document['getElementById'](_0x2dc7f6(0x1ba))[_0x2dc7f6(0x204)],document['getElementById']('p-date-1')[_0x2dc7f6(0x203)]=_0x26605b,document['getElementById'](_0x2dc7f6(0x131))[_0x2dc7f6(0x1af)]=build3ColTable(_0x2dc7f6(0x1ac)),document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x124))[_0x2dc7f6(0x1af)]=build3ColTable(_0x2dc7f6(0x16b)),document[_0x2dc7f6(0x1e2)](_0x2dc7f6(0x129))[_0x2dc7f6(0x1af)]=document[_0x2dc7f6(0x1e2)]('conclusion')[_0x2dc7f6(0x1af)]),_0x266c40;}window[_0x372836(0x1a9)](_0x372836(0x11e),prepareReportData);function downloadSilentPDF(){const _0x50f4c4=_0x372836,_0x8a63c1=prepareReportData(),_0x1d2b98=document[_0x50f4c4(0x1e2)](_0x8a63c1),_0x855219=document[_0x50f4c4(0x1e2)](_0x50f4c4(0x134)),_0x49226b=_0x855219['innerHTML'];_0x855219['innerHTML']='⏳\x20Generating\x20PDF...',_0x855219[_0x50f4c4(0x20d)]=!![];const _0x2b5b6e=document[_0x50f4c4(0x1e2)](_0x50f4c4(0x148));_0x2b5b6e[_0x50f4c4(0x163)]('media'),document['getElementById']('app-screen')[_0x50f4c4(0x1dd)][_0x50f4c4(0x153)]=_0x50f4c4(0x1bf),_0x1d2b98[_0x50f4c4(0x1dd)]['display']='block',window[_0x50f4c4(0x165)](0x0,0x0);const _0x2d9c53=_0x1d2b98[_0x50f4c4(0x1dd)][_0x50f4c4(0x1ab)],_0x250d61=_0x1d2b98[_0x50f4c4(0x1dd)][_0x50f4c4(0x135)];_0x1d2b98[_0x50f4c4(0x1dd)][_0x50f4c4(0x1ab)]=_0x50f4c4(0x11f),_0x1d2b98['style'][_0x50f4c4(0x135)]=_0x50f4c4(0x11f),_0x1d2b98[_0x50f4c4(0x1dd)]['margin']='0',_0x1d2b98[_0x50f4c4(0x1dd)][_0x50f4c4(0x142)]='0';let _0xaf491d=document['getElementById']('pt-name')[_0x50f4c4(0x204)]||'Patient',_0x3ebc7b=_0x50f4c4(0x1ff)+_0xaf491d['replace'](/\s+/g,'_')+'.pdf';const _0x45ab12={'margin':0xa,'filename':_0x3ebc7b,'image':{'type':_0x50f4c4(0x19c),'quality':0x1},'html2canvas':{'scale':0x2,'useCORS':!![],'scrollY':0x0,'scrollX':0x0},'jsPDF':{'unit':'mm','format':'a4','orientation':_0x50f4c4(0x1f9)},'pagebreak':{'mode':[_0x50f4c4(0x14c),_0x50f4c4(0x1cf)]}};setTimeout(()=>{const _0x3ce951=_0x50f4c4;html2pdf()[_0x3ce951(0x1ee)](_0x45ab12)[_0x3ce951(0x1fe)](_0x1d2b98)[_0x3ce951(0x198)]()[_0x3ce951(0x184)](()=>{const _0x3bd341=_0x3ce951;_0x1d2b98['style'][_0x3bd341(0x1ab)]=_0x2d9c53,_0x1d2b98[_0x3bd341(0x1dd)]['maxWidth']=_0x250d61,_0x1d2b98[_0x3bd341(0x1dd)]['margin']='',_0x1d2b98[_0x3bd341(0x1dd)][_0x3bd341(0x142)]='',_0x2b5b6e[_0x3bd341(0x16a)](_0x3bd341(0x201),'print'),_0x1d2b98['style']['display']=_0x3bd341(0x1bf),document[_0x3bd341(0x1e2)]('app-screen')[_0x3bd341(0x1dd)][_0x3bd341(0x153)]=_0x3bd341(0x1d9),_0x855219['innerHTML']=_0x49226b,_0x855219[_0x3bd341(0x20d)]=![];});},0x12c);}function _0x2bce(){const _0x419a13=['<p><i>No\x20measurements\x20entered.</i></p>','setAttribute','.print-dop','mobile-unlock-btn','Apical\x20anterior','removeItem','conclusion','test','<tr>','live-input','Apical\x20inferior','source-legend','target','querySelectorAll','av-pg','pt-gender','toString','p-conclusion-2','forEach','customFields','center','Backspace','parentElement','ceil','None','Delete','e_act','then','<table\x20class=\x22dyn-table\x22>','trim','numeric','auth-fail','metaKey','split','echoFormState','dot2','dot0','QXV0aGVudGljYXRpb24gRmFpbGVk','stringify','<path\x20id=\x22psax-','div','.cust-name','className','key','\x22></div><div\x20class=\x22ig\x20ig-med\x22><input\x20type=\x22text\x22\x20class=\x22cust-val\x20print-dop\x20live-input\x22\x20placeholder=\x22Value\x22\x20value=\x22','app-screen','🔒\x20MANUAL\x20MODE','save','ArrowLeft','lock-status-text','p-tach','jpeg','pdf','RCA','focus','p-gender-2','pt-age','indexOf','Mid\x20inferolateral','visibilitychange','toggle','Mid\x20anterolateral','txt','current-time','addEventListener','<circle\x20id=\x22psax-apical-cap\x22\x20class=\x22rwma-path\x22\x20cx=\x22110\x22\x20cy=\x22110\x22\x20r=\x2222\x22\x20data-wall=\x22Apical\x20cap\x22\x20data-art=\x22LAD\x20(Primary)\x22\x20data-val=\x22N\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Apical\x20cap\x20(LAD)</title></circle>','width','.print-dim','3WnAQTT','p-brad','innerHTML','push','#ffffff','ArrowDown','pt-date','replace','#ea580c','inactivity-warning','background','ctrlKey','AUTO-SYNC\x20PAUSED','pt-ref','getItem','.pill.active','en-GB','Mid\x20anterior','none','auth-success','Are\x20you\x20sure\x20you\x20want\x20to\x20clear\x20all\x20data\x20for\x20the\x20next\x20patient?','p-name-2','Basal\x20inferior','print-layout-1page','Enter','2356492FeTNFm','p-date-2','parse','p-ref-1','⚠️\x20Name,\x20Age\x20and\x20Gender\x20are\x20mandatory\x20before\x20printing.','arrow-nav-dop4','hidden-pin','toLocaleTimeString','1538550HwdFaS','legacy','maxTouchPoints','beforeunload','p-age-1','data-val','print-active','type','getAttribute','inline-block','#fee2e2','block','1452264yTzSwM','marginBottom','\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22','style','current-date','</td>','reload','ArrowUp','getElementById','backgroundColor','dot','Basal\x20anterolateral','QWNjZXNzIERlbmllZA==','dynamic-print-dim-2','</text>','opacity','application/json','pt-name','rvsp-warning','QXV0aGVudGljYXRpbmcuLi4=','set','now','classList','getDate','cloneNode','Custom','.rwma-path','auth-message','.auth-wrapper','cust-val','e_unl','portrait','json','<td\x20class=\x22lbl\x22\x20style=\x22border:\x20none;\x22></td><td\x20class=\x22val\x22\x20style=\x22border:\x20none;\x22></td>','ref-panel','pv-pg','from','2D_ECHO_','remove','media','</table>','innerText','value','laao','SELECT','name','svg-psax','QWNjZXNzIEdyYW50ZWQ=','dot3','3380868CqzysK','\x22\x20font-size=\x2212\x22\x20font-weight=\x22bold\x22\x20text-anchor=\x22middle\x22\x20fill=\x22#475569\x22\x20pointer-events=\x22none\x22>','disabled','Basal\x20inferolateral','print-layout-2page','map','contains','Basal\x20anteroseptal','setItem','alignItems','Mid\x20inferoseptal','toLowerCase','p-rwma-legend-2','p-gender-1','12760300joWZLw','🔓\x20AUTO-SYNC:\x20ON','active','arrow-nav-dim4','API\x20Error','pills','val','Apical\x20septal','\x22></div><button\x20class=\x22btn-red\x20btn-small\x22\x20onclick=\x22this.parentElement.remove();\x20runLiveEngine();\x22>X</button>','join','valueAsDate','\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>','.cust-val','\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a4-apical-cap\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Apical\x20cap\x22\x20data-art=\x22LAD\x20(Primary)\x22\x20data-val=\x22N\x22\x20d=\x22M\x2020,100\x20C\x2020,30\x20120,30\x20120,100\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Apical\x20cap\x20(LAD)</title></path>\x0a\x20\x20\x20\x20\x20\x20<text\x20x=\x2270\x22\x20y=\x2270\x22\x20font-size=\x2210\x22\x20font-weight=\x22bold\x22\x20text-anchor=\x22middle\x22\x20fill=\x22#475569\x22\x20pointer-events=\x22none\x22>Apex</text>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a4-apical-septal\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Apical\x20septal\x22\x20data-art=\x22LAD\x22\x20data-val=\x22N\x22\x20d=\x22M\x2020,100\x20L\x2065,100\x20L\x2065,136\x20L\x2020,136\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Apical\x20septal\x20(LAD)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a4-mid-inferoseptal\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Mid\x20inferoseptal\x22\x20data-art=\x22RCA\x22\x20data-val=\x22N\x22\x20d=\x22M\x2020,136\x20L\x2065,136\x20L\x2065,173\x20L\x2020,173\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Mid\x20inferoseptal\x20(RCA)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a4-basal-inferoseptal\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Basal\x20inferoseptal\x22\x20data-art=\x22RCA\x22\x20data-val=\x22N\x22\x20d=\x22M\x2020,173\x20L\x2065,173\x20L\x2065,210\x20L\x2020,210\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Basal\x20inferoseptal\x20(RCA)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a4-apical-lateral\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Apical\x20lateral\x22\x20data-art=\x22LCx\x22\x20data-val=\x22N\x22\x20d=\x22M\x2075,100\x20L\x20120,100\x20L\x20120,136\x20L\x2075,136\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Apical\x20lateral\x20(LCx)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a4-mid-anterolateral\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Mid\x20anterolateral\x22\x20data-art=\x22LCx\x22\x20data-val=\x22N\x22\x20d=\x22M\x2075,136\x20L\x20120,136\x20L\x20120,173\x20L\x2075,173\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Mid\x20anterolateral\x20(LCx)</title></path>\x0a\x20\x20\x20\x20\x20\x20<path\x20id=\x22a4-basal-anterolateral\x22\x20class=\x22rwma-path\x22\x20data-wall=\x22Basal\x20anterolateral\x22\x20data-art=\x22LCx\x22\x20data-val=\x22N\x22\x20d=\x22M\x2075,173\x20L\x20120,173\x20L\x20120,210\x20L\x2075,210\x20Z\x22\x20fill=\x22#ffffff\x22\x20stroke=\x22#cbd5e1\x22\x20stroke-width=\x222\x22\x20style=\x22cursor:pointer;\x22\x20onclick=\x22toggleRWMA(this)\x22><title>Basal\x20anterolateral\x20(LCx)</title></path>\x0a\x20\x20\x20\x20\x20\x20<text\x20x=\x2242.5\x22\x20y=\x22155\x22\x20font-size=\x2210\x22\x20font-weight=\x22bold\x22\x20text-anchor=\x22middle\x22\x20fill=\x22#475569\x22\x20pointer-events=\x22none\x22\x20transform=\x22rotate(-90\x2042.5,155)\x22>Septal</text>\x0a\x20\x20\x20\x20\x20\x20<text\x20x=\x2297.5\x22\x20y=\x22155\x22\x20font-size=\x2210\x22\x20font-weight=\x22bold\x22\x20text-anchor=\x22middle\x22\x20fill=\x22#475569\x22\x20pointer-events=\x22none\x22\x20transform=\x22rotate(90\x2097.5,155)\x22>Lateral</text>\x0a\x20\x20\x20\x20','error','beforeprint','190mm','custom-container','POST','opacity\x200.6s\x20ease','shake','dynamic-print-dop-1','tagName','#fef08a','querySelector','calculated','p-conclusion-1','Mid\x20anteroseptal','input','p-name-1','fill','includes','svg-a4ch','sin','dynamic-print-dim-1','.custom-row','<text\x20x=\x22','pdf-dl-btn','maxWidth','click','data-txt','Mid\x20inferior','\x22\x20data-val=\x22N\x22\x20d=\x22','cos','44350904fypiyZ','<b\x20style=\x27color:#ef4444;\x27>[Network\x20Error\x20-\x20API\x20Unreachable]</b>','rvsp','rwma','appendChild','ontouchstart','preventDefault','padding','\x22\x20y=\x22','Basal\x20anterior','getMonth','3012180hOMCiO','⚠️\x20RVSP\x20is\x20mandatory.\x20Please\x20enter\x20a\x20value\x20(or\x200\x20if\x20not\x20measurable)\x20before\x20generating\x20the\x20report.','print-styles','arrow-nav-dim3','charCodeAt','2-digit','css','LCx','LAD','textContent','#64748b','.live-input',')</title></path>','display','inputs','#fca5a5','arrow-nav-cust','Basal\x20inferoseptal','add','<div\x20class=\x22ig\x20ig-med\x22><input\x20type=\x22text\x22\x20class=\x22cust-name\x20live-input\x22\x20placeholder=\x22Name\x22\x20value=\x22','length','keys','\x22\x20data-art=\x22','Aki','short','<b\x20style=\x27color:#ef4444;\x27>[API\x20Disconnected\x20-\x20Please\x20Check\x20Netlify]</b>','Dys','p-rwma-visual-2','\x22\x20font-size=\x2210\x22\x20font-weight=\x22bold\x22\x20text-anchor=\x22middle\x22\x20fill=\x22#475569\x22\x20pointer-events=\x22none\x22>','removeAttribute','keydown','scrollTo','art','padStart','transition'];_0x2bce=function(){return _0x419a13;};return _0x2bce();}function enableGridArrowNav(_0x37c132,_0x3886ae){const _0x50615c=Array['from'](document['querySelectorAll']('.'+_0x37c132));_0x50615c['forEach']((_0x206cd0,_0x4c88f8)=>{const _0xbfb8b8=_0x1cb3;_0x206cd0[_0xbfb8b8(0x1a9)](_0xbfb8b8(0x164),function(_0x42f4ed){const _0x4fe412=_0xbfb8b8;if(_0x42f4ed[_0x4fe412(0x175)][_0x4fe412(0x125)]===_0x4fe412(0x206)&&(_0x42f4ed['key']===_0x4fe412(0x1e1)||_0x42f4ed[_0x4fe412(0x194)]===_0x4fe412(0x1b2)))return;if(_0x42f4ed['key']==='ArrowRight'&&_0x4c88f8<_0x50615c['length']-0x1)_0x42f4ed[_0x4fe412(0x141)](),_0x50615c[_0x4c88f8+0x1][_0x4fe412(0x19f)]();else{if(_0x42f4ed[_0x4fe412(0x194)]===_0x4fe412(0x199)&&_0x4c88f8>0x0)_0x42f4ed[_0x4fe412(0x141)](),_0x50615c[_0x4c88f8-0x1][_0x4fe412(0x19f)]();else{if(_0x42f4ed['key']==='ArrowDown'&&_0x4c88f8+_0x3886ae<_0x50615c[_0x4fe412(0x15a)])_0x42f4ed[_0x4fe412(0x141)](),_0x50615c[_0x4c88f8+_0x3886ae][_0x4fe412(0x19f)]();else _0x42f4ed['key']===_0x4fe412(0x1e1)&&_0x4c88f8-_0x3886ae>=0x0&&(_0x42f4ed['preventDefault'](),_0x50615c[_0x4c88f8-_0x3886ae]['focus']());}}});});}enableGridArrowNav(_0x372836(0x149),0x3),enableGridArrowNav(_0x372836(0x21c),0x4),enableGridArrowNav(_0x372836(0x1cb),0x4),enableGridArrowNav(_0x372836(0x156),0x2);function checkRVSP(_0x5987fa){const _0x5541d0=_0x372836,_0x1c144e=document[_0x5541d0(0x1e2)](_0x5541d0(0x13d)),_0x341c24=document['getElementById'](_0x5541d0(0x1ec)),_0x5e8a9f=document[_0x5541d0(0x1e2)](_0x5541d0(0x1eb))[_0x5541d0(0x204)][_0x5541d0(0x186)](),_0x1c0437=document[_0x5541d0(0x1e2)](_0x5541d0(0x1a1))[_0x5541d0(0x204)][_0x5541d0(0x186)](),_0x410bd4=document[_0x5541d0(0x1e2)]('pt-gender')[_0x5541d0(0x204)][_0x5541d0(0x186)]();if(!_0x5e8a9f||!_0x1c0437||!_0x410bd4){[_0x5541d0(0x1eb),_0x5541d0(0x1a1),_0x5541d0(0x178)]['forEach'](_0x63f7bf=>{const _0x5cd0b0=_0x5541d0,_0x553e57=document[_0x5cd0b0(0x1e2)](_0x63f7bf);if(!_0x553e57[_0x5cd0b0(0x204)][_0x5cd0b0(0x186)]())_0x553e57['style'][_0x5cd0b0(0x1e3)]=_0x5cd0b0(0x1d8);}),setTimeout(()=>{const _0x456fbd=_0x5541d0;[_0x456fbd(0x1eb),_0x456fbd(0x1a1),'pt-gender']['forEach'](_0x570177=>{const _0x1e7964=_0x456fbd;document[_0x1e7964(0x1e2)](_0x570177)[_0x1e7964(0x1dd)][_0x1e7964(0x1e3)]='';}),_0x341c24[_0x456fbd(0x1dd)][_0x456fbd(0x153)]='none';},0xbb8),_0x341c24[_0x5541d0(0x14f)]=_0x5541d0(0x1ca),_0x341c24[_0x5541d0(0x1dd)][_0x5541d0(0x153)]=_0x5541d0(0x1d9),document['getElementById'](!_0x5e8a9f?_0x5541d0(0x1eb):!_0x1c0437?_0x5541d0(0x1a1):'pt-gender')['focus']();return;}if(!_0x1c144e['value']||_0x1c144e[_0x5541d0(0x204)][_0x5541d0(0x186)]()===''){_0x1c144e[_0x5541d0(0x1dd)][_0x5541d0(0x1e3)]='#fee2e2',_0x1c144e[_0x5541d0(0x19f)](),setTimeout(()=>{const _0x34b920=_0x5541d0;_0x1c144e[_0x34b920(0x1dd)]['backgroundColor']='',_0x341c24[_0x34b920(0x1dd)][_0x34b920(0x153)]=_0x34b920(0x1bf);},0xbb8),_0x341c24[_0x5541d0(0x14f)]=_0x5541d0(0x147),_0x341c24['style'][_0x5541d0(0x153)]=_0x5541d0(0x1d9);return;}_0x341c24['style'][_0x5541d0(0x153)]=_0x5541d0(0x1bf),_0x1c144e[_0x5541d0(0x1dd)]['backgroundColor']='',[_0x5541d0(0x1eb),'pt-age',_0x5541d0(0x178)][_0x5541d0(0x17b)](_0x13c68b=>{const _0x597837=_0x5541d0;document[_0x597837(0x1e2)](_0x13c68b)[_0x597837(0x1dd)][_0x597837(0x1e3)]='';}),_0x5987fa===_0x5541d0(0x19d)?downloadSilentPDF():window['print']();}const secureWipe=()=>{const _0x467cbf=_0x372836;sessionStorage['removeItem'](_0x467cbf(0x1f8)),sessionStorage[_0x467cbf(0x16e)](_0x467cbf(0x183));const _0x37d7f8=document[_0x467cbf(0x1e2)](_0x467cbf(0x196));if(_0x37d7f8)_0x37d7f8[_0x467cbf(0x1dd)][_0x467cbf(0x153)]='none';};window[_0x372836(0x1a9)](_0x372836(0x1a4),()=>{const _0x33255d=_0x372836;document['hidden']&&(secureWipe(),window['location'][_0x33255d(0x1e0)]());}),window['addEventListener'](_0x372836(0x1d1),secureWipe); 
+  </script>
+</body>
+</html>
