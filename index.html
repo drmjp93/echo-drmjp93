@@ -343,7 +343,7 @@
         <div class="ig ig-wide"><label>NAME</label><input type="text" id="pt-name" class="live-input" oninput="this.value = this.value.toUpperCase()"></div>
         <div class="ig"><label>AGE</label><input type="text" id="pt-age" class="live-input"></div>
         <div class="ig"><label>GENDER</label><input type="text" id="pt-gender" class="live-input" oninput="this.value = this.value.toUpperCase()"></div>
-        <div class="ig ig-wide">  <label>REFERRED BY</label>  <input type="text" id="pt-ref" name="referred-by" list="referrer-list" class="live-input" oninput="this.value =   this.value.toUpperCase()">  <datalist id="referrer-list"></datalist> </div>
+       <div class="ig ig-wide">  <label>REFERRED BY</label>  <input type="text" id="pt-ref" name="referred-by" list="referrer-list" class="live-input" style="text-transform: uppercase;">  <datalist id="referrer-list"></datalist> </div>
         <div class="ig ig-med"><label>DATE</label><input type="date" id="pt-date" class="live-input"></div>
       </div>
 
@@ -589,17 +589,22 @@
   }
 })();
 
-  // Load saved referrers into datalist
+ // Load saved referrers into datalist
 function loadReferrers() {
   const refs = JSON.parse(localStorage.getItem('echoReferrers') || '[]');
+  // Added closing </option> tags for stricter browser parsing
   document.getElementById('referrer-list').innerHTML = 
-    refs.map(r => `<option value="${r}">`).join('');
+    refs.map(r => `<option value="${r}"></option>`).join('');
 }
 
-// Save referrer on blur
-document.getElementById('pt-ref').addEventListener('blur', function() {
+// Save referrer on change (better for datalist selections)
+document.getElementById('pt-ref').addEventListener('change', function() {
+  // Convert to uppercase in the background here instead of while typing
+  this.value = this.value.toUpperCase(); 
   const val = this.value.trim();
+  
   if (!val) return;
+  
   const refs = JSON.parse(localStorage.getItem('echoReferrers') || '[]');
   if (!refs.includes(val)) {
     refs.push(val);
