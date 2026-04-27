@@ -343,7 +343,7 @@
         <div class="ig ig-wide"><label>NAME</label><input type="text" id="pt-name" class="live-input" oninput="this.value = this.value.toUpperCase()"></div>
         <div class="ig"><label>AGE</label><input type="text" id="pt-age" class="live-input"></div>
         <div class="ig"><label>GENDER</label><input type="text" id="pt-gender" class="live-input" oninput="this.value = this.value.toUpperCase()"></div>
-        <div class="ig ig-wide"><label>REFERRED BY</label><input type="text" id="pt-ref" name="referred-by" autocomplete="on" class="live-input" oninput="this.value = this.value.toUpperCase()"></div>
+        <div class="ig ig-wide">  <label>REFERRED BY</label>  <input type="text" id="pt-ref" name="referred-by" list="referrer-list" class="live-input" oninput="this.value =   this.value.toUpperCase()">  <datalist id="referrer-list"></datalist> </div>
         <div class="ig ig-med"><label>DATE</label><input type="date" id="pt-date" class="live-input"></div>
       </div>
 
@@ -589,6 +589,27 @@
   }
 })();
 
+  // Load saved referrers into datalist
+function loadReferrers() {
+  const refs = JSON.parse(localStorage.getItem('echoReferrers') || '[]');
+  document.getElementById('referrer-list').innerHTML = 
+    refs.map(r => `<option value="${r}">`).join('');
+}
+
+// Save referrer on blur
+document.getElementById('pt-ref').addEventListener('blur', function() {
+  const val = this.value.trim();
+  if (!val) return;
+  const refs = JSON.parse(localStorage.getItem('echoReferrers') || '[]');
+  if (!refs.includes(val)) {
+    refs.push(val);
+    localStorage.setItem('echoReferrers', JSON.stringify(refs));
+    loadReferrers();
+  }
+});
+
+loadReferrers();
+  
 
 </script>
 </body>
