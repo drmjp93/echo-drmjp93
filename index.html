@@ -556,6 +556,12 @@
 </style>
 <div id="clinic-floating-footer" style="position: fixed; bottom: 0; left: 0; width: 100%; background-color: #37474F; color: #ECEFF1; font-size: 11px; padding: 6px 16px; z-index: 9999; display: flex; justify-content: center; align-items: center; gap: 12px; box-shadow: 0 -4px 10px rgba(0,0,0,0.15); font-family: sans-serif; letter-spacing: 0.5px; box-sizing: border-box;">
     <span>&copy; Dr. Mit Panchani 2026-2027</span>
+    <span style="color: #90A4AE; font-size: 14px; line-height: 1; margin-left: 10px;">•</span>
+    <button onclick="fetchEchoStats()" id="statsBtn" style="background: none; border: 1px solid #90A4AE; color: #ECEFF1; font-size: 10px; padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: 0.2s; margin-left: 10px;" onmouseover="this.style.background='#455A64'" onmouseout="this.style.background='none'">
+        📊 VIEW STATS
+    </button>
+  
+  
     <span style="color: #90A4AE; font-size: 14px; line-height: 1;">•</span>
     <span>Visitor count - <span id="visitCount" style="font-weight: bold; color: #18FFFF; margin-left: 4px; letter-spacing: 1px;">...</span></span>
 </div>
@@ -614,7 +620,64 @@ document.getElementById('pt-ref').addEventListener('change', function() {
 });
 
 loadReferrers();
-  
+
+// ══════════════════════════════════════════
+// STATS LOGGING ENGINE (Fixed for Echo Tool)
+// ══════════════════════════════════════════
+async function logEchoToServer() {
+    // Note: IDs changed to match the Echo tool's HTML
+    const nameBox = document.getElementById('pt-name');
+    const name = nameBox ? nameBox.value.toUpperCase().trim() : '';
+    const age = document.getElementById('pt-age') ? document.getElementById('pt-age').value.trim() : '';
+    const sex = document.getElementById('pt-gender') ? document.getElementById('pt-gender').value : '';
+    
+    if (!name || !age) return;
+
+    // Creates an ID like: "RAHUL_45_M_2026-04-28"
+    const today = new Date().toLocaleDateString('en-CA'); 
+    const uniqueId = `${name}_${age}_${sex}_${today}`.replace(/\s+/g, '');
+
+    try {
+        await fetch("https://echo-stats.drmjp93.workers.dev", {
+            method: "POST",
+            body: JSON.stringify({ 
+                id: uniqueId, 
+                date: today,
+                month: today.substring(0, 7)
+            })
+        });
+    } catch (e) {
+        console.log("Stats logging failed, but workflow continues.");
+    }
+}
+
+// 🌟 THE MAGIC BYPASS: Intercepts the print command without touching scrambled code!
+const originalPrint = window.print;
+window.print = function() {
+    logEchoToServer(); // 1. Silently log the stats first
+    originalPrint();   // 2. Continue with the normal print window
+};
+
+async function fetchEchoStats() {
+    const btn = document.getElementById('statsBtn');
+    btn.innerText = "⏳ Loading...";
+    
+    const today = new Date().toLocaleDateString('en-CA'); // "2026-04-28"
+    const month = today.substring(0, 7); // "2026-04"
+
+    try {
+        const response = await fetch(`https://echo-stats.drmjp93.workers.dev?date=${today}&month=${month}`);
+        const data = await response.json();
+        
+        // Show an elegant browser alert with the data
+        alert(`📊 CLINIC ECHO STATS\n\nTotal Today: ${data.today}\nTotal This Month: ${data.month}`);
+        
+        btn.innerText = "📊 VIEW STATS";
+    } catch (e) {
+        alert("Could not fetch stats right now.");
+        btn.innerText = "📊 VIEW STATS";
+    }
+}  
 
 </script>
 </body>
